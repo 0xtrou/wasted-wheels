@@ -120,93 +120,8 @@ class RacingGame {
     }
 
     initSoundSystem() {
-        // Initialize audio context on first user interaction
-        const initAudio = () => {
-            if (this.audioContext) return;
-
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const ctx = this.audioContext;
-
-            // Create realistic V8 engine sound with multiple harmonics
-            this.engineMasterGain = ctx.createGain();
-            this.engineMasterGain.gain.value = 0;
-            this.engineMasterGain.connect(ctx.destination);
-
-            // Engine compression for that punchy sound
-            this.engineCompressor = ctx.createDynamicsCompressor();
-            this.engineCompressor.threshold.value = -24;
-            this.engineCompressor.knee.value = 30;
-            this.engineCompressor.ratio.value = 12;
-            this.engineCompressor.attack.value = 0.003;
-            this.engineCompressor.release.value = 0.25;
-            this.engineCompressor.connect(this.engineMasterGain);
-
-            // Low-pass filter for engine warmth
-            this.engineFilter = ctx.createBiquadFilter();
-            this.engineFilter.type = 'lowpass';
-            this.engineFilter.frequency.value = 800;
-            this.engineFilter.Q.value = 1;
-            this.engineFilter.connect(this.engineCompressor);
-
-            // Create multiple oscillators for V8 engine harmonics
-            this.engineOscillators = [];
-            this.engineGains = [];
-
-            // Fundamental frequency (main engine rumble)
-            const harmonics = [
-                { type: 'sawtooth', freqMult: 1, gain: 0.4 },      // Fundamental
-                { type: 'square', freqMult: 0.5, gain: 0.3 },      // Sub-bass rumble
-                { type: 'sawtooth', freqMult: 2, gain: 0.2 },      // 2nd harmonic
-                { type: 'triangle', freqMult: 4, gain: 0.1 },      // 4th harmonic (exhaust crackle)
-                { type: 'sawtooth', freqMult: 0.25, gain: 0.15 }   // Deep V8 throb
-            ];
-
-            harmonics.forEach(h => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-
-                osc.type = h.type;
-                osc.frequency.value = 40;
-                gain.gain.value = h.gain;
-
-                osc.connect(gain);
-                gain.connect(this.engineFilter);
-                osc.start();
-
-                this.engineOscillators.push({ osc, freqMult: h.freqMult });
-                this.engineGains.push(gain);
-            });
-
-            // Add engine noise (air intake / exhaust texture)
-            const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-            const noiseData = noiseBuffer.getChannelData(0);
-            for (let i = 0; i < noiseData.length; i++) {
-                noiseData[i] = (Math.random() * 2 - 1) * 0.5;
-            }
-
-            this.engineNoise = ctx.createBufferSource();
-            this.engineNoise.buffer = noiseBuffer;
-            this.engineNoise.loop = true;
-
-            this.engineNoiseGain = ctx.createGain();
-            this.engineNoiseGain.gain.value = 0;
-
-            this.engineNoiseFilter = ctx.createBiquadFilter();
-            this.engineNoiseFilter.type = 'bandpass';
-            this.engineNoiseFilter.frequency.value = 500;
-            this.engineNoiseFilter.Q.value = 0.5;
-
-            this.engineNoise.connect(this.engineNoiseFilter);
-            this.engineNoiseFilter.connect(this.engineNoiseGain);
-            this.engineNoiseGain.connect(this.engineCompressor);
-            this.engineNoise.start();
-
-            document.removeEventListener('keydown', initAudio);
-            document.removeEventListener('click', initAudio);
-        };
-
-        document.addEventListener('keydown', initAudio);
-        document.addEventListener('click', initAudio);
+        // Audio will be initialized when user clicks START button in countdown()
+        // This is required by browser autoplay policies
     }
 
     playSound(type, volume = 0.3) {
@@ -3567,6 +3482,10 @@ class RacingGame {
             // Initialize audio on click
             if (!this.audioContext) {
                 this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                // Resume audio context (required by browsers)
+                if (this.audioContext.state === 'suspended') {
+                    this.audioContext.resume();
+                }
                 const ctx = this.audioContext;
 
                 // Create realistic V8 engine sound with multiple harmonics

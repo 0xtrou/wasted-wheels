@@ -3964,27 +3964,8 @@ class RacingGame {
             let closestPoint = car.trackProgress || 0;
             const prevProgress = car.trackProgress || 0;
 
-            // Search for closest track point, but limit search range to prevent
-            // cars behind start line from matching end-of-track points
-            // Search within a reasonable range of current progress (±25% of track)
-            const searchRange = Math.floor(numPoints * 0.25);
-            const searchStart = Math.max(0, prevProgress - searchRange);
-            const searchEnd = Math.min(numPoints, prevProgress + searchRange);
-
-            // Also search near start/end for lap transitions
+            // Find closest track point
             for (let i = 0; i < numPoints; i += 5) {
-                // Only search within range, OR near start (0-20%) OR near end (80-100%)
-                const inRange = (i >= searchStart && i <= searchEnd);
-                const nearStart = (i < numPoints * 0.2);
-                const nearEnd = (i > numPoints * 0.8);
-                const prevNearStart = (prevProgress < numPoints * 0.2);
-                const prevNearEnd = (prevProgress > numPoints * 0.8);
-
-                // Allow searching near start/end only if car was already near those areas
-                if (!inRange && !(nearStart && prevNearStart) && !(nearEnd && prevNearEnd) && !(nearStart && prevNearEnd) && !(nearEnd && prevNearStart)) {
-                    continue;
-                }
-
                 const point = this.trackPoints[i];
                 const dx = point.x - car.position.x;
                 const dz = point.z - car.position.z;
@@ -3994,6 +3975,42 @@ class RacingGame {
                     closestPoint = i;
                 }
             }
+
+            // On first frame (prevProgress = 0, lap = 1), cars should stay near start
+            // Prevent AI cars behind start line from matching end-of-track points
+            if (prevProgress === 0 && car.lap === 1) {
+                // First detection - only allow progress in first 15% of track
+                if (closestPoint > numPoints * 0.15) {
+                    closestPoint = 0; // Force to start
+                }
+            } else {
+                // Prevent cars from jumping from start to end of track (or vice versa)
+                // Only allow large jumps during actual lap transitions
+                const jumpThreshold = numPoints * 0.5;
+                const progressJump = Math.abs(closestPoint - prevProgress);
+
+                if (progressJump > jumpThreshold) {
+                    // Check if this is a valid lap transition (end -> start)
+                    const isLapTransition = (prevProgress > numPoints * 0.8 && closestPoint < numPoints * 0.2);
+                    if (!isLapTransition) {
+                        // Invalid jump - keep previous progress and search locally
+                        closestPoint = prevProgress;
+                        minDist = Infinity;
+                        const localRange = Math.floor(numPoints * 0.15);
+                        for (let i = Math.max(0, prevProgress - localRange); i < Math.min(numPoints, prevProgress + localRange); i += 5) {
+                            const point = this.trackPoints[i];
+                            const dx = point.x - car.position.x;
+                            const dz = point.z - car.position.z;
+                            const dist = dx * dx + dz * dz;
+                            if (dist < minDist) {
+                                minDist = dist;
+                                closestPoint = i;
+                            }
+                        }
+                    }
+                }
+            }
+
             car.trackProgress = closestPoint;
 
             // Check for lap completion (crossed from end of track to start)

@@ -44,6 +44,11 @@ class RacingGame {
         // Nitro boost effects
         this.nitroTrails = [];
 
+        // Pickup items system
+        this.pickups = [];
+        this.maxPickups = 8;
+        this.pickupEffects = [];
+
         // Car names for leaderboard
         this.carNames = [
             'PLAYER', 'VIPER', 'SHADOW', 'NITRO', 'BLAZE',
@@ -92,6 +97,7 @@ class RacingGame {
         this.createEnvironment();
         this.createHelicopters();
         this.createGhosts();
+        this.createPickups();
 
         // Event listeners
         this.setupControls();
@@ -1483,9 +1489,356 @@ class RacingGame {
         this.applyDamage(car, ghost.damage, 'ghost');
     }
 
+    // Pickup items system
+    createPickups() {
+        for (let i = 0; i < this.maxPickups; i++) {
+            this.spawnPickup();
+        }
+    }
+
+    spawnPickup() {
+        // Random position on track (avoid start section)
+        let trackIndex;
+        do {
+            trackIndex = Math.floor(Math.random() * this.trackPoints.length);
+        } while (trackIndex < this.straightSectionEnd);
+
+        const trackPoint = this.trackPoints[trackIndex];
+        const nextPoint = this.trackPoints[(trackIndex + 1) % this.trackPoints.length];
+        const dir = new THREE.Vector3().subVectors(nextPoint, trackPoint).normalize();
+        const perp = new THREE.Vector3(-dir.z, 0, dir.x);
+        const offset = (Math.random() - 0.5) * 25;
+
+        // Random type: health or shield
+        const isHealth = Math.random() < 0.6;
+        const pickup = this.createPickupMesh(isHealth);
+
+        pickup.position.copy(trackPoint);
+        pickup.position.add(perp.clone().multiplyScalar(offset));
+        pickup.position.y = 2;
+
+        pickup.pickupType = isHealth ? 'health' : 'shield';
+        pickup.collected = false;
+        pickup.floatOffset = Math.random() * Math.PI * 2;
+        pickup.rotationSpeed = 0.03 + Math.random() * 0.02;
+
+        this.pickups.push(pickup);
+        this.scene.add(pickup);
+    }
+
+    createPickupMesh(isHealth) {
+        const group = new THREE.Group();
+
+        if (isHealth) {
+            // Health pickup - green cross/plus
+            const color = 0x00ff44;
+            const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
+
+            // Vertical bar
+            const vBar = new THREE.Mesh(new THREE.BoxGeometry(0.8, 3, 0.8), mat);
+            group.add(vBar);
+
+            // Horizontal bar
+            const hBar = new THREE.Mesh(new THREE.BoxGeometry(3, 0.8, 0.8), mat);
+            group.add(hBar);
+
+            // Glow sphere
+            const glowMat = new THREE.MeshBasicMaterial({ color: 0x00ff44, transparent: true, opacity: 0.3 });
+            const glow = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 16), glowMat);
+            group.add(glow);
+
+            // Outer ring
+            const ringGeo = new THREE.TorusGeometry(2, 0.15, 8, 32);
+            const ring = new THREE.Mesh(ringGeo, mat);
+            ring.rotation.x = Math.PI / 2;
+            group.add(ring);
+        } else {
+            // Shield pickup - blue hexagon/diamond
+            const color = 0x00aaff;
+            const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
+
+            // Diamond shape
+            const diamondGeo = new THREE.OctahedronGeometry(1.5, 0);
+            const diamond = new THREE.Mesh(diamondGeo, mat);
+            diamond.scale.set(1, 1.5, 1);
+            group.add(diamond);
+
+            // Glow sphere
+            const glowMat = new THREE.MeshBasicMaterial({ color: 0x0088ff, transparent: true, opacity: 0.3 });
+            const glow = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 16), glowMat);
+            group.add(glow);
+
+            // Orbiting rings
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.7 });
+            const ring1 = new THREE.Mesh(new THREE.TorusGeometry(2, 0.1, 8, 32), ringMat);
+            ring1.rotation.x = Math.PI / 3;
+            group.add(ring1);
+
+            const ring2 = new THREE.Mesh(new THREE.TorusGeometry(2, 0.1, 8, 32), ringMat);
+            ring2.rotation.x = -Math.PI / 3;
+            ring2.rotation.y = Math.PI / 2;
+            group.add(ring2);
+        }
+
+        return group;
+    }
+
+    updatePickups() {
+        if (!this.gameStarted) return;
+
+        const time = Date.now() * 0.001;
+
+        for (let i = this.pickups.length - 1; i >= 0; i--) {
+            const pickup = this.pickups[i];
+            if (pickup.collected) continue;
+
+            // Floating and rotating animation
+            pickup.position.y = 2 + Math.sin(time * 2 + pickup.floatOffset) * 0.5;
+            pickup.rotation.y += pickup.rotationSpeed;
+
+            const pickupX = pickup.position.x;
+            const pickupZ = pickup.position.z;
+            const hitRadiusSq = 16; // 4 units radius
+
+            // Check collision with player
+            if (!this.playerCar.destroyed) {
+                const dx = pickupX - this.playerCar.position.x;
+                const dz = pickupZ - this.playerCar.position.z;
+                if (dx * dx + dz * dz < hitRadiusSq) {
+                    this.collectPickup(pickup, this.playerCar);
+                    continue;
+                }
+            }
+
+            // Check collision with AI cars
+            for (const car of this.aiCars) {
+                if (car.destroyed) continue;
+                const dx = pickupX - car.position.x;
+                const dz = pickupZ - car.position.z;
+                if (dx * dx + dz * dz < hitRadiusSq) {
+                    this.collectPickup(pickup, car);
+                    break;
+                }
+            }
+        }
+
+        // Update pickup effects
+        this.updatePickupEffects();
+    }
+
+    collectPickup(pickup, car) {
+        if (pickup.collected) return;
+        pickup.collected = true;
+
+        // Create collection effect
+        this.createPickupCollectEffect(pickup.position.clone(), pickup.pickupType);
+
+        // Apply pickup effect
+        if (pickup.pickupType === 'health') {
+            const healAmount = 15 + Math.floor(Math.random() * 20); // 15-35 health
+            car.health = Math.min(car.health + healAmount, 100);
+
+            if (car.isPlayer) {
+                this.updateHealthDisplay();
+                this.showPickupText('+' + healAmount + ' HP', '#00ff44');
+            }
+        } else {
+            // Shield - 5 seconds of protection
+            car.shieldActive = true;
+            car.shieldEndTime = Date.now() + 5000;
+
+            // Create shield visual on car
+            this.createCarShield(car);
+
+            if (car.isPlayer) {
+                this.showPickupText('SHIELD 5s', '#00aaff');
+            }
+        }
+
+        // Remove pickup
+        this.scene.remove(pickup);
+        const idx = this.pickups.indexOf(pickup);
+        if (idx > -1) this.pickups.splice(idx, 1);
+
+        // Respawn after delay
+        setTimeout(() => {
+            if (!this.gameOver && !this.raceFinished) {
+                this.spawnPickup();
+            }
+        }, 8000);
+    }
+
+    createCarShield(car) {
+        // Remove existing shield if any
+        if (car.shieldMesh) {
+            car.remove(car.shieldMesh);
+        }
+
+        // Create shield bubble around car
+        const shieldGeo = new THREE.SphereGeometry(5, 16, 16);
+        const shieldMat = new THREE.MeshBasicMaterial({
+            color: 0x00aaff,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide
+        });
+        const shield = new THREE.Mesh(shieldGeo, shieldMat);
+        shield.position.y = 1;
+        car.add(shield);
+        car.shieldMesh = shield;
+    }
+
+    updateCarShields() {
+        const now = Date.now();
+
+        // Check player shield
+        if (this.playerCar.shieldActive && now >= this.playerCar.shieldEndTime) {
+            this.playerCar.shieldActive = false;
+            if (this.playerCar.shieldMesh) {
+                this.playerCar.remove(this.playerCar.shieldMesh);
+                this.playerCar.shieldMesh = null;
+            }
+        }
+
+        // Animate player shield
+        if (this.playerCar.shieldMesh) {
+            this.playerCar.shieldMesh.material.opacity = 0.2 + Math.sin(now * 0.01) * 0.15;
+            this.playerCar.shieldMesh.rotation.y += 0.02;
+        }
+
+        // Check AI shields
+        for (const car of this.aiCars) {
+            if (car.shieldActive && now >= car.shieldEndTime) {
+                car.shieldActive = false;
+                if (car.shieldMesh) {
+                    car.remove(car.shieldMesh);
+                    car.shieldMesh = null;
+                }
+            }
+
+            // Animate AI shields
+            if (car.shieldMesh) {
+                car.shieldMesh.material.opacity = 0.2 + Math.sin(now * 0.01) * 0.15;
+                car.shieldMesh.rotation.y += 0.02;
+            }
+        }
+    }
+
+    createPickupCollectEffect(position, type) {
+        const color = type === 'health' ? 0x00ff44 : 0x00aaff;
+        const numParticles = 20;
+
+        for (let i = 0; i < numParticles; i++) {
+            const particle = new THREE.Mesh(
+                new THREE.SphereGeometry(0.3, 6, 6),
+                new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 })
+            );
+
+            particle.position.copy(position);
+            particle.velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.5,
+                Math.random() * 0.3 + 0.2,
+                (Math.random() - 0.5) * 0.5
+            );
+            particle.life = 1;
+            particle.decay = 0.02 + Math.random() * 0.02;
+
+            this.scene.add(particle);
+            this.pickupEffects.push(particle);
+        }
+
+        // Expanding ring effect
+        const ringGeo = new THREE.RingGeometry(0.5, 1, 32);
+        const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.copy(position);
+        ring.rotation.x = -Math.PI / 2;
+        ring.expandSpeed = 0.3;
+        ring.life = 1;
+        ring.decay = 0.03;
+        ring.isRing = true;
+        this.scene.add(ring);
+        this.pickupEffects.push(ring);
+    }
+
+    updatePickupEffects() {
+        for (let i = this.pickupEffects.length - 1; i >= 0; i--) {
+            const effect = this.pickupEffects[i];
+
+            if (effect.isRing) {
+                // Expanding ring
+                effect.scale.x += effect.expandSpeed;
+                effect.scale.y += effect.expandSpeed;
+                effect.material.opacity = effect.life * 0.8;
+            } else {
+                // Particle
+                effect.position.add(effect.velocity);
+                effect.velocity.y -= 0.01; // Gravity
+                effect.material.opacity = effect.life;
+                effect.scale.setScalar(effect.life);
+            }
+
+            effect.life -= effect.decay;
+
+            if (effect.life <= 0) {
+                this.scene.remove(effect);
+                this.pickupEffects.splice(i, 1);
+            }
+        }
+    }
+
+    showPickupText(text, color) {
+        // Create floating text notification
+        const div = document.createElement('div');
+        div.textContent = text;
+        div.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: ${color};
+            text-shadow: 0 0 20px ${color}, 0 0 40px ${color};
+            pointer-events: none;
+            z-index: 1000;
+            animation: pickupTextAnim 1.5s ease-out forwards;
+        `;
+        document.body.appendChild(div);
+
+        // Add animation style if not exists
+        if (!document.getElementById('pickup-anim-style')) {
+            const style = document.createElement('style');
+            style.id = 'pickup-anim-style';
+            style.textContent = `
+                @keyframes pickupTextAnim {
+                    0% { opacity: 1; transform: translate(-50%, -50%) scale(0.5); }
+                    20% { transform: translate(-50%, -50%) scale(1.2); }
+                    40% { transform: translate(-50%, -50%) scale(1); }
+                    100% { opacity: 0; transform: translate(-50%, -100%) scale(1); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        setTimeout(() => div.remove(), 1500);
+    }
+
     // Unified damage system for all cars
     applyDamage(car, damage, source) {
         if (car.destroyed) return;
+
+        // No damage in first 10 seconds of race
+        if (this.raceStartTime && Date.now() - this.raceStartTime < 10000) {
+            return; // Invincibility period
+        }
+
+        // Shield blocks damage
+        if (car.shieldActive) {
+            // Create shield hit effect
+            this.createShieldHitEffect(car);
+            return; // No damage taken
+        }
 
         // Apply damage to car's health
         car.health -= damage;
@@ -1507,6 +1860,35 @@ class RacingGame {
             if (car.isPlayer) {
                 this.showGameOver();
             }
+        }
+    }
+
+    createShieldHitEffect(car) {
+        // Flash the shield and create sparks
+        if (car.shieldMesh) {
+            car.shieldMesh.material.opacity = 0.8;
+            setTimeout(() => {
+                if (car.shieldMesh) car.shieldMesh.material.opacity = 0.3;
+            }, 100);
+        }
+
+        // Create spark particles
+        for (let i = 0; i < 10; i++) {
+            const spark = new THREE.Mesh(
+                new THREE.SphereGeometry(0.2, 4, 4),
+                new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 1 })
+            );
+            spark.position.copy(car.position);
+            spark.position.y += 2;
+            spark.velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.8,
+                Math.random() * 0.5,
+                (Math.random() - 0.5) * 0.8
+            );
+            spark.life = 1;
+            spark.decay = 0.05;
+            this.scene.add(spark);
+            this.pickupEffects.push(spark);
         }
     }
 
@@ -2169,6 +2551,7 @@ class RacingGame {
                 countdownEl.style.color = '#00ff00';
                 countdownEl.classList.add('show');
                 this.gameStarted = true;
+                this.raceStartTime = Date.now(); // Track race start for invincibility period
                 setTimeout(() => {
                     countdownEl.classList.remove('show');
                     this.animate();
@@ -2314,10 +2697,46 @@ class RacingGame {
                     car.velocity *= 0.8;
                 }
 
-                // Small damage on collision
-                if (Math.abs(this.speed) > 30 || (car.velocity && car.velocity > 30)) {
-                    this.applyDamage(car, 2, 'collision');
-                    this.applyDamage(other, 2, 'collision');
+                // Check for rear collision - if car hits other's tail, car takes 3x damage
+                const carSpeed = car.isPlayer ? this.speed : (car.velocity || 0);
+                const otherSpeed = other.isPlayer ? this.speed : (other.velocity || 0);
+
+                if (Math.abs(carSpeed) > 20 || Math.abs(otherSpeed) > 20) {
+                    // Get car forward directions
+                    const carForward = new THREE.Vector3(
+                        Math.sin(car.rotation.y),
+                        0,
+                        Math.cos(car.rotation.y)
+                    );
+                    const otherForward = new THREE.Vector3(
+                        Math.sin(other.rotation.y),
+                        0,
+                        Math.cos(other.rotation.y)
+                    );
+
+                    // Direction from car to other
+                    const toOther = new THREE.Vector3(dx, 0, dz).normalize();
+
+                    // Check if car hit other's rear (car is behind other and moving towards it)
+                    const carHitOtherRear = carForward.dot(toOther) > 0.5 && otherForward.dot(toOther) > 0.3;
+                    // Check if other hit car's rear
+                    const otherHitCarRear = otherForward.dot(toOther.clone().negate()) > 0.5 && carForward.dot(toOther.clone().negate()) > 0.3;
+
+                    const baseDamage = 2;
+
+                    if (carHitOtherRear) {
+                        // Car rear-ended other - car takes 10x damage (20), other takes 1x (2)
+                        this.applyDamage(car, baseDamage * 10, 'collision');
+                        this.applyDamage(other, baseDamage, 'collision');
+                    } else if (otherHitCarRear) {
+                        // Other rear-ended car - other takes 10x damage (20), car takes 1x (2)
+                        this.applyDamage(car, baseDamage, 'collision');
+                        this.applyDamage(other, baseDamage * 10, 'collision');
+                    } else {
+                        // Side collision - equal damage (5 each)
+                        this.applyDamage(car, baseDamage * 2.5, 'collision');
+                        this.applyDamage(other, baseDamage * 2.5, 'collision');
+                    }
                 }
             }
         }
@@ -2646,6 +3065,8 @@ class RacingGame {
         this.updateExplosions();
         this.updateNitroTrails();
         this.updateGhosts();
+        this.updatePickups();
+        this.updateCarShields();
         this.updateCamera();
         this.updatePositions();
 

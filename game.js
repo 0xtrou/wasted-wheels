@@ -244,79 +244,209 @@ class RacingGame {
             this.playNoise(0.1, 0.3, volume * 0.3);
 
         } else if (type === 'hit') {
-            // Realistic metal crash/impact sound
+            // MASSIVE CRASHY car collision sound
             const masterGain = ctx.createGain();
-            masterGain.gain.value = volume;
+            masterGain.gain.value = volume * 1.5; // Louder!
             masterGain.connect(ctx.destination);
 
-            // Low thud (body impact)
-            const thudOsc = ctx.createOscillator();
-            const thudGain = ctx.createGain();
-            thudOsc.type = 'sine';
-            thudOsc.frequency.setValueAtTime(80, now);
-            thudOsc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
-            thudGain.gain.setValueAtTime(0.8, now);
-            thudGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-            thudOsc.connect(thudGain);
-            thudGain.connect(masterGain);
-            thudOsc.start(now);
-            thudOsc.stop(now + 0.2);
+            // Heavy compressor for MAXIMUM punch
+            const compressor = ctx.createDynamicsCompressor();
+            compressor.threshold.value = -30;
+            compressor.knee.value = 0;
+            compressor.ratio.value = 20;
+            compressor.attack.value = 0;
+            compressor.release.value = 0.1;
+            compressor.connect(masterGain);
 
-            // Metal crunch (mid frequencies)
-            const crunchOsc = ctx.createOscillator();
-            const crunchGain = ctx.createGain();
-            const crunchFilter = ctx.createBiquadFilter();
-            crunchOsc.type = 'sawtooth';
-            crunchOsc.frequency.setValueAtTime(300, now);
-            crunchOsc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
-            crunchFilter.type = 'bandpass';
-            crunchFilter.frequency.value = 400;
-            crunchFilter.Q.value = 2;
-            crunchGain.gain.setValueAtTime(0.5, now);
-            crunchGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-            crunchOsc.connect(crunchFilter);
-            crunchFilter.connect(crunchGain);
-            crunchGain.connect(masterGain);
-            crunchOsc.start(now);
-            crunchOsc.stop(now + 0.1);
-
-            // High metallic ring
-            const ringOsc = ctx.createOscillator();
-            const ringGain = ctx.createGain();
-            const ringFilter = ctx.createBiquadFilter();
-            ringOsc.type = 'sine';
-            ringOsc.frequency.setValueAtTime(1200, now);
-            ringOsc.frequency.exponentialRampToValueAtTime(800, now + 0.3);
-            ringFilter.type = 'highpass';
-            ringFilter.frequency.value = 600;
-            ringGain.gain.setValueAtTime(0.2, now);
-            ringGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-            ringOsc.connect(ringFilter);
-            ringFilter.connect(ringGain);
-            ringGain.connect(masterGain);
-            ringOsc.start(now);
-            ringOsc.stop(now + 0.3);
-
-            // Glass/debris scatter noise
-            const noiseLen = 0.25;
-            const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * noiseLen, ctx.sampleRate);
-            const noiseData = noiseBuffer.getChannelData(0);
-            for (let i = 0; i < noiseData.length; i++) {
-                noiseData[i] = (Math.random() * 2 - 1);
+            // 1. MASSIVE initial impact (double layered)
+            for (let layer = 0; layer < 2; layer++) {
+                const impactOsc = ctx.createOscillator();
+                const impactGain = ctx.createGain();
+                impactOsc.type = layer === 0 ? 'sine' : 'triangle';
+                impactOsc.frequency.setValueAtTime(120 - layer * 40, now);
+                impactOsc.frequency.exponentialRampToValueAtTime(25, now + 0.25);
+                impactGain.gain.setValueAtTime(1.2, now);
+                impactGain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                impactOsc.connect(impactGain);
+                impactGain.connect(compressor);
+                impactOsc.start(now);
+                impactOsc.stop(now + 0.25);
             }
-            const noiseSource = ctx.createBufferSource();
-            noiseSource.buffer = noiseBuffer;
-            const noiseGain = ctx.createGain();
-            const noiseFilter = ctx.createBiquadFilter();
-            noiseFilter.type = 'highpass';
-            noiseFilter.frequency.value = 2000;
-            noiseGain.gain.setValueAtTime(0.4, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + noiseLen);
-            noiseSource.connect(noiseFilter);
-            noiseFilter.connect(noiseGain);
-            noiseGain.connect(masterGain);
-            noiseSource.start(now);
-            noiseSource.stop(now + noiseLen);
+
+            // 2. BRUTAL metal crunch (6 frequencies for chaos)
+            const metalFreqs = [150, 200, 280, 380, 500, 650];
+            metalFreqs.forEach((freq, i) => {
+                const metalOsc = ctx.createOscillator();
+                const metalGain = ctx.createGain();
+                const metalFilter = ctx.createBiquadFilter();
+                const metalDist = ctx.createWaveShaper();
+
+                // Distortion curve for gritty metal sound
+                const curve = new Float32Array(256);
+                for (let j = 0; j < 256; j++) {
+                    const x = (j / 128) - 1;
+                    curve[j] = Math.tanh(x * 3);
+                }
+                metalDist.curve = curve;
+
+                metalOsc.type = 'sawtooth';
+                metalOsc.frequency.setValueAtTime(freq + Math.random() * 80, now);
+                metalOsc.frequency.exponentialRampToValueAtTime(freq * 0.3, now + 0.3);
+
+                metalFilter.type = 'bandpass';
+                metalFilter.frequency.value = freq;
+                metalFilter.Q.value = 5 + Math.random() * 3;
+
+                metalGain.gain.setValueAtTime(0.6 - i * 0.08, now);
+                metalGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2 + i * 0.04);
+
+                metalOsc.connect(metalDist);
+                metalDist.connect(metalFilter);
+                metalFilter.connect(metalGain);
+                metalGain.connect(compressor);
+                metalOsc.start(now + i * 0.008);
+                metalOsc.stop(now + 0.35 + i * 0.04);
+            });
+
+            // 3. Violent sheet metal screaming
+            const screamFreqs = [700, 1000, 1400, 1900, 2500];
+            screamFreqs.forEach((freq, i) => {
+                const screamOsc = ctx.createOscillator();
+                const screamGain = ctx.createGain();
+
+                screamOsc.type = 'sawtooth';
+                screamOsc.frequency.setValueAtTime(freq + Math.random() * 200, now);
+                screamOsc.frequency.exponentialRampToValueAtTime(freq * 0.5, now + 0.5);
+
+                screamGain.gain.setValueAtTime(0.25 - i * 0.04, now);
+                screamGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4 + i * 0.06);
+
+                screamOsc.connect(screamGain);
+                screamGain.connect(compressor);
+                screamOsc.start(now);
+                screamOsc.stop(now + 0.5 + i * 0.06);
+            });
+
+            // 4. EXPLOSIVE glass shatter
+            const glassLen = 0.4;
+            const glassBuffer = ctx.createBuffer(1, ctx.sampleRate * glassLen, ctx.sampleRate);
+            const glassData = glassBuffer.getChannelData(0);
+            for (let i = 0; i < glassData.length; i++) {
+                // Intense crackling with random spikes
+                const spike = Math.random() > 0.95 ? 2 : 1;
+                glassData[i] = (Math.random() * 2 - 1) * spike * Math.pow(1 - i / glassData.length, 0.3);
+            }
+            const glassSource = ctx.createBufferSource();
+            glassSource.buffer = glassBuffer;
+            const glassGain = ctx.createGain();
+            const glassFilter = ctx.createBiquadFilter();
+            glassFilter.type = 'highpass';
+            glassFilter.frequency.value = 2500;
+            glassGain.gain.setValueAtTime(0.8, now);
+            glassGain.gain.exponentialRampToValueAtTime(0.01, now + glassLen);
+            glassSource.connect(glassFilter);
+            glassFilter.connect(glassGain);
+            glassGain.connect(compressor);
+            glassSource.start(now);
+            glassSource.stop(now + glassLen);
+
+            // 5. SCREAMING tire skid
+            const screechOsc = ctx.createOscillator();
+            const screechOsc2 = ctx.createOscillator();
+            const screechGain = ctx.createGain();
+            const screechFilter = ctx.createBiquadFilter();
+            screechOsc.type = 'sawtooth';
+            screechOsc2.type = 'square';
+            screechOsc.frequency.setValueAtTime(800, now);
+            screechOsc.frequency.linearRampToValueAtTime(300, now + 0.15);
+            screechOsc.frequency.linearRampToValueAtTime(900, now + 0.25);
+            screechOsc.frequency.linearRampToValueAtTime(200, now + 0.4);
+            screechOsc2.frequency.setValueAtTime(750, now);
+            screechOsc2.frequency.linearRampToValueAtTime(350, now + 0.4);
+            screechFilter.type = 'bandpass';
+            screechFilter.frequency.value = 600;
+            screechFilter.Q.value = 12;
+            screechGain.gain.setValueAtTime(0.4, now);
+            screechGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+            screechOsc.connect(screechFilter);
+            screechOsc2.connect(screechFilter);
+            screechFilter.connect(screechGain);
+            screechGain.connect(compressor);
+            screechOsc.start(now);
+            screechOsc2.start(now);
+            screechOsc.stop(now + 0.4);
+            screechOsc2.stop(now + 0.4);
+
+            // 6. CHAOTIC debris explosion
+            const debrisLen = 0.5;
+            const debrisBuffer = ctx.createBuffer(1, ctx.sampleRate * debrisLen, ctx.sampleRate);
+            const debrisData = debrisBuffer.getChannelData(0);
+            for (let i = 0; i < debrisData.length; i++) {
+                const chaos = Math.random() > 0.9 ? 1.5 : 1;
+                debrisData[i] = (Math.random() * 2 - 1) * chaos * Math.pow(1 - i / debrisData.length, 0.4);
+            }
+            const debrisSource = ctx.createBufferSource();
+            debrisSource.buffer = debrisBuffer;
+            const debrisGain = ctx.createGain();
+            const debrisFilter = ctx.createBiquadFilter();
+            debrisFilter.type = 'bandpass';
+            debrisFilter.frequency.value = 1200;
+            debrisFilter.Q.value = 0.8;
+            debrisGain.gain.setValueAtTime(0.7, now + 0.02);
+            debrisGain.gain.exponentialRampToValueAtTime(0.01, now + debrisLen);
+            debrisSource.connect(debrisFilter);
+            debrisFilter.connect(debrisGain);
+            debrisGain.connect(compressor);
+            debrisSource.start(now + 0.02);
+            debrisSource.stop(now + debrisLen + 0.02);
+
+            // 7. THUNDEROUS sub-bass (chest punch)
+            const subOsc = ctx.createOscillator();
+            const subOsc2 = ctx.createOscillator();
+            const subGain = ctx.createGain();
+            subOsc.type = 'sine';
+            subOsc2.type = 'sine';
+            subOsc.frequency.setValueAtTime(60, now);
+            subOsc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
+            subOsc2.frequency.setValueAtTime(45, now);
+            subOsc2.frequency.exponentialRampToValueAtTime(15, now + 0.35);
+            subGain.gain.setValueAtTime(1, now);
+            subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+            subOsc.connect(subGain);
+            subOsc2.connect(subGain);
+            subGain.connect(compressor);
+            subOsc.start(now);
+            subOsc2.start(now);
+            subOsc.stop(now + 0.35);
+            subOsc2.stop(now + 0.35);
+
+            // 8. Multiple plastic/bumper CRACKS
+            for (let c = 0; c < 3; c++) {
+                const crackOsc = ctx.createOscillator();
+                const crackGain = ctx.createGain();
+                crackOsc.type = 'square';
+                crackOsc.frequency.setValueAtTime(3000 - c * 400, now + c * 0.03);
+                crackOsc.frequency.exponentialRampToValueAtTime(600, now + c * 0.03 + 0.1);
+                crackGain.gain.setValueAtTime(0.35, now + c * 0.03);
+                crackGain.gain.exponentialRampToValueAtTime(0.01, now + c * 0.03 + 0.1);
+                crackOsc.connect(crackGain);
+                crackGain.connect(compressor);
+                crackOsc.start(now + c * 0.03);
+                crackOsc.stop(now + c * 0.03 + 0.12);
+            }
+
+            // 9. Secondary crunch wave
+            const crunch2Osc = ctx.createOscillator();
+            const crunch2Gain = ctx.createGain();
+            crunch2Osc.type = 'sawtooth';
+            crunch2Osc.frequency.setValueAtTime(250, now + 0.08);
+            crunch2Osc.frequency.exponentialRampToValueAtTime(80, now + 0.25);
+            crunch2Gain.gain.setValueAtTime(0.5, now + 0.08);
+            crunch2Gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+            crunch2Osc.connect(crunch2Gain);
+            crunch2Gain.connect(compressor);
+            crunch2Osc.start(now + 0.08);
+            crunch2Osc.stop(now + 0.3);
 
         } else if (type === 'ghost') {
             // Spooky whoosh
@@ -419,96 +549,114 @@ class RacingGame {
             });
 
         } else if (type === 'explosion') {
-            // Epic missile explosion sound
+            // DEVASTATING CINEMATIC missile explosion
             const masterGain = ctx.createGain();
-            masterGain.gain.value = volume;
+            masterGain.gain.value = volume * 1.8; // LOUDER!
             masterGain.connect(ctx.destination);
 
-            // Compressor for punch
+            // BRUTAL compressor for maximum impact
             const compressor = ctx.createDynamicsCompressor();
-            compressor.threshold.value = -20;
-            compressor.knee.value = 10;
-            compressor.ratio.value = 16;
+            compressor.threshold.value = -40;
+            compressor.knee.value = 0;
+            compressor.ratio.value = 20;
             compressor.attack.value = 0;
-            compressor.release.value = 0.1;
+            compressor.release.value = 0.05;
             compressor.connect(masterGain);
 
-            // 1. Initial BOOM - deep bass explosion
-            const boomOsc = ctx.createOscillator();
-            const boomGain = ctx.createGain();
-            boomOsc.type = 'sine';
-            boomOsc.frequency.setValueAtTime(80, now);
-            boomOsc.frequency.exponentialRampToValueAtTime(20, now + 0.5);
-            boomGain.gain.setValueAtTime(1, now);
-            boomGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
-            boomOsc.connect(boomGain);
-            boomGain.connect(compressor);
-            boomOsc.start(now);
-            boomOsc.stop(now + 0.5);
+            // 1. NUCLEAR initial BOOM (triple layered)
+            for (let layer = 0; layer < 3; layer++) {
+                const boomOsc = ctx.createOscillator();
+                const boomGain = ctx.createGain();
+                boomOsc.type = layer === 0 ? 'sine' : (layer === 1 ? 'triangle' : 'sine');
+                boomOsc.frequency.setValueAtTime(100 - layer * 25, now);
+                boomOsc.frequency.exponentialRampToValueAtTime(15, now + 0.6 + layer * 0.1);
+                boomGain.gain.setValueAtTime(1.5 - layer * 0.3, now);
+                boomGain.gain.exponentialRampToValueAtTime(0.01, now + 0.6 + layer * 0.1);
+                boomOsc.connect(boomGain);
+                boomGain.connect(compressor);
+                boomOsc.start(now);
+                boomOsc.stop(now + 0.7 + layer * 0.1);
+            }
 
-            // 2. Sub-bass rumble
-            const subOsc = ctx.createOscillator();
-            const subGain = ctx.createGain();
-            subOsc.type = 'sine';
-            subOsc.frequency.setValueAtTime(40, now);
-            subOsc.frequency.exponentialRampToValueAtTime(15, now + 0.8);
-            subGain.gain.setValueAtTime(0.8, now);
-            subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
-            subOsc.connect(subGain);
-            subGain.connect(compressor);
-            subOsc.start(now);
-            subOsc.stop(now + 0.8);
+            // 2. EARTH-SHAKING sub-bass (feel it in your chest)
+            const subFreqs = [30, 45, 60];
+            subFreqs.forEach((freq, i) => {
+                const subOsc = ctx.createOscillator();
+                const subGain = ctx.createGain();
+                subOsc.type = 'sine';
+                subOsc.frequency.setValueAtTime(freq, now);
+                subOsc.frequency.exponentialRampToValueAtTime(10 + i * 3, now + 1.0);
+                subGain.gain.setValueAtTime(1.2 - i * 0.2, now);
+                subGain.gain.exponentialRampToValueAtTime(0.01, now + 1.0);
+                subOsc.connect(subGain);
+                subGain.connect(compressor);
+                subOsc.start(now);
+                subOsc.stop(now + 1.0);
+            });
 
-            // 3. Mid-range explosion crackle
-            const crackleOsc = ctx.createOscillator();
-            const crackleGain = ctx.createGain();
-            const crackleFilter = ctx.createBiquadFilter();
-            crackleOsc.type = 'sawtooth';
-            crackleOsc.frequency.setValueAtTime(200, now);
-            crackleOsc.frequency.exponentialRampToValueAtTime(60, now + 0.3);
-            crackleFilter.type = 'bandpass';
-            crackleFilter.frequency.value = 300;
-            crackleFilter.Q.value = 1;
-            crackleGain.gain.setValueAtTime(0.6, now);
-            crackleGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-            crackleOsc.connect(crackleFilter);
-            crackleFilter.connect(crackleGain);
-            crackleGain.connect(compressor);
-            crackleOsc.start(now);
-            crackleOsc.stop(now + 0.3);
+            // 3. MASSIVE explosion crackle with distortion
+            const crackleFreqs = [150, 220, 300, 400];
+            crackleFreqs.forEach((freq, i) => {
+                const crackleOsc = ctx.createOscillator();
+                const crackleGain = ctx.createGain();
+                const crackleDist = ctx.createWaveShaper();
+                const curve = new Float32Array(256);
+                for (let j = 0; j < 256; j++) {
+                    const x = (j / 128) - 1;
+                    curve[j] = Math.tanh(x * 5);
+                }
+                crackleDist.curve = curve;
 
-            // 4. High frequency sizzle/fire
-            const sizzleOsc = ctx.createOscillator();
-            const sizzleGain = ctx.createGain();
-            const sizzleFilter = ctx.createBiquadFilter();
-            sizzleOsc.type = 'sawtooth';
-            sizzleOsc.frequency.setValueAtTime(800, now);
-            sizzleOsc.frequency.exponentialRampToValueAtTime(200, now + 0.4);
-            sizzleFilter.type = 'highpass';
-            sizzleFilter.frequency.value = 400;
-            sizzleGain.gain.setValueAtTime(0.3, now);
-            sizzleGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-            sizzleOsc.connect(sizzleFilter);
-            sizzleFilter.connect(sizzleGain);
-            sizzleGain.connect(compressor);
-            sizzleOsc.start(now);
-            sizzleOsc.stop(now + 0.4);
+                crackleOsc.type = 'sawtooth';
+                crackleOsc.frequency.setValueAtTime(freq + Math.random() * 50, now);
+                crackleOsc.frequency.exponentialRampToValueAtTime(40, now + 0.4);
+                crackleGain.gain.setValueAtTime(0.8 - i * 0.15, now);
+                crackleGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4 + i * 0.05);
+                crackleOsc.connect(crackleDist);
+                crackleDist.connect(crackleGain);
+                crackleGain.connect(compressor);
+                crackleOsc.start(now);
+                crackleOsc.stop(now + 0.5 + i * 0.05);
+            });
 
-            // 5. Explosion noise burst (debris/shrapnel)
-            const noiseLen = 0.6;
+            // 4. ROARING fire/sizzle
+            const fireFreqs = [600, 900, 1300, 1800];
+            fireFreqs.forEach((freq, i) => {
+                const fireOsc = ctx.createOscillator();
+                const fireGain = ctx.createGain();
+                const fireFilter = ctx.createBiquadFilter();
+                fireOsc.type = 'sawtooth';
+                fireOsc.frequency.setValueAtTime(freq + Math.random() * 200, now);
+                fireOsc.frequency.exponentialRampToValueAtTime(150, now + 0.6);
+                fireFilter.type = 'bandpass';
+                fireFilter.frequency.value = freq;
+                fireFilter.Q.value = 2;
+                fireGain.gain.setValueAtTime(0.4 - i * 0.08, now);
+                fireGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5 + i * 0.05);
+                fireOsc.connect(fireFilter);
+                fireFilter.connect(fireGain);
+                fireGain.connect(compressor);
+                fireOsc.start(now);
+                fireOsc.stop(now + 0.6 + i * 0.05);
+            });
+
+            // 5. VIOLENT debris/shrapnel explosion
+            const noiseLen = 0.8;
             const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * noiseLen, ctx.sampleRate);
             const noiseData = noiseBuffer.getChannelData(0);
             for (let i = 0; i < noiseData.length; i++) {
-                noiseData[i] = (Math.random() * 2 - 1);
+                // Random intense spikes for shrapnel
+                const spike = Math.random() > 0.92 ? 2.5 : 1;
+                noiseData[i] = (Math.random() * 2 - 1) * spike * Math.pow(1 - i / noiseData.length, 0.25);
             }
             const noiseSource = ctx.createBufferSource();
             noiseSource.buffer = noiseBuffer;
             const noiseGain = ctx.createGain();
             const noiseFilter = ctx.createBiquadFilter();
             noiseFilter.type = 'lowpass';
-            noiseFilter.frequency.setValueAtTime(4000, now);
-            noiseFilter.frequency.exponentialRampToValueAtTime(500, now + noiseLen);
-            noiseGain.gain.setValueAtTime(0.7, now);
+            noiseFilter.frequency.setValueAtTime(6000, now);
+            noiseFilter.frequency.exponentialRampToValueAtTime(300, now + noiseLen);
+            noiseGain.gain.setValueAtTime(1, now);
             noiseGain.gain.exponentialRampToValueAtTime(0.01, now + noiseLen);
             noiseSource.connect(noiseFilter);
             noiseFilter.connect(noiseGain);
@@ -516,34 +664,179 @@ class RacingGame {
             noiseSource.start(now);
             noiseSource.stop(now + noiseLen);
 
-            // 6. Secondary boom (echo/reverb effect)
-            const echo1Osc = ctx.createOscillator();
-            const echo1Gain = ctx.createGain();
-            echo1Osc.type = 'sine';
-            echo1Osc.frequency.setValueAtTime(60, now + 0.1);
-            echo1Osc.frequency.exponentialRampToValueAtTime(25, now + 0.4);
-            echo1Gain.gain.setValueAtTime(0, now);
-            echo1Gain.gain.setValueAtTime(0.4, now + 0.1);
-            echo1Gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-            echo1Osc.connect(echo1Gain);
-            echo1Gain.connect(compressor);
-            echo1Osc.start(now);
-            echo1Osc.stop(now + 0.5);
+            // 6. Multiple SHOCKWAVE echoes
+            for (let echo = 0; echo < 4; echo++) {
+                const echoOsc = ctx.createOscillator();
+                const echoGain = ctx.createGain();
+                const delay = 0.1 + echo * 0.12;
+                echoOsc.type = 'sine';
+                echoOsc.frequency.setValueAtTime(70 - echo * 10, now + delay);
+                echoOsc.frequency.exponentialRampToValueAtTime(20, now + delay + 0.3);
+                echoGain.gain.setValueAtTime(0, now);
+                echoGain.gain.setValueAtTime(0.6 - echo * 0.12, now + delay);
+                echoGain.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.35);
+                echoOsc.connect(echoGain);
+                echoGain.connect(compressor);
+                echoOsc.start(now);
+                echoOsc.stop(now + delay + 0.4);
+            }
 
-            // 7. Distant rumble tail
-            const tailOsc = ctx.createOscillator();
-            const tailGain = ctx.createGain();
-            tailOsc.type = 'sine';
-            tailOsc.frequency.setValueAtTime(35, now + 0.2);
-            tailOsc.frequency.exponentialRampToValueAtTime(20, now + 1.0);
-            tailGain.gain.setValueAtTime(0, now);
-            tailGain.gain.linearRampToValueAtTime(0.3, now + 0.25);
-            tailGain.gain.exponentialRampToValueAtTime(0.01, now + 1.0);
-            tailOsc.connect(tailGain);
-            tailGain.connect(compressor);
-            tailOsc.start(now);
-            tailOsc.stop(now + 1.0);
+            // 7. ROLLING THUNDER rumble tail
+            const thunderLen = 1.5;
+            const thunderBuffer = ctx.createBuffer(1, ctx.sampleRate * thunderLen, ctx.sampleRate);
+            const thunderData = thunderBuffer.getChannelData(0);
+            for (let i = 0; i < thunderData.length; i++) {
+                const rumble = Math.sin(i / (ctx.sampleRate * 0.05)) * 0.5;
+                thunderData[i] = (Math.random() * 2 - 1 + rumble) * Math.pow(1 - i / thunderData.length, 0.5) * 0.5;
+            }
+            const thunderSource = ctx.createBufferSource();
+            thunderSource.buffer = thunderBuffer;
+            const thunderGain = ctx.createGain();
+            const thunderFilter = ctx.createBiquadFilter();
+            thunderFilter.type = 'lowpass';
+            thunderFilter.frequency.value = 200;
+            thunderGain.gain.setValueAtTime(0, now);
+            thunderGain.gain.linearRampToValueAtTime(0.6, now + 0.15);
+            thunderGain.gain.exponentialRampToValueAtTime(0.01, now + thunderLen);
+            thunderSource.connect(thunderFilter);
+            thunderFilter.connect(thunderGain);
+            thunderGain.connect(compressor);
+            thunderSource.start(now + 0.1);
+            thunderSource.stop(now + thunderLen + 0.1);
+
+            // 8. HIGH PITCH whistle (flying debris)
+            const whistleOsc = ctx.createOscillator();
+            const whistleGain = ctx.createGain();
+            whistleOsc.type = 'sine';
+            whistleOsc.frequency.setValueAtTime(3000, now);
+            whistleOsc.frequency.exponentialRampToValueAtTime(800, now + 0.5);
+            whistleGain.gain.setValueAtTime(0.15, now);
+            whistleGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            whistleOsc.connect(whistleGain);
+            whistleGain.connect(compressor);
+            whistleOsc.start(now);
+            whistleOsc.stop(now + 0.5);
+
+            // 9. SECONDARY EXPLOSION
+            const boom2Osc = ctx.createOscillator();
+            const boom2Gain = ctx.createGain();
+            boom2Osc.type = 'sine';
+            boom2Osc.frequency.setValueAtTime(80, now + 0.2);
+            boom2Osc.frequency.exponentialRampToValueAtTime(25, now + 0.6);
+            boom2Gain.gain.setValueAtTime(0, now);
+            boom2Gain.gain.setValueAtTime(0.8, now + 0.2);
+            boom2Gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+            boom2Osc.connect(boom2Gain);
+            boom2Gain.connect(compressor);
+            boom2Osc.start(now);
+            boom2Osc.stop(now + 0.7);
+
+        } else if (type === 'countdown') {
+            // Countdown beep (3, 2, 1)
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.value = 440; // A4 note
+
+            gain.gain.setValueAtTime(volume * 0.5, now);
+            gain.gain.setValueAtTime(volume * 0.5, now + 0.15);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.3);
+
+        } else if (type === 'countdown_go') {
+            // GO! sound - triumphant higher pitch
+            const masterGain = ctx.createGain();
+            masterGain.gain.value = volume;
+            masterGain.connect(ctx.destination);
+
+            // Main GO tone (higher pitch)
+            const osc1 = ctx.createOscillator();
+            const gain1 = ctx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.value = 880; // A5 - higher than countdown
+            gain1.gain.setValueAtTime(0.5, now);
+            gain1.gain.setValueAtTime(0.5, now + 0.3);
+            gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+            osc1.connect(gain1);
+            gain1.connect(masterGain);
+            osc1.start(now);
+            osc1.stop(now + 0.6);
+
+            // Harmony note (major third above)
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.value = 1108.73; // C#6
+            gain2.gain.setValueAtTime(0.3, now);
+            gain2.gain.setValueAtTime(0.3, now + 0.3);
+            gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+            osc2.connect(gain2);
+            gain2.connect(masterGain);
+            osc2.start(now);
+            osc2.stop(now + 0.6);
+
+            // Fifth note for full chord
+            const osc3 = ctx.createOscillator();
+            const gain3 = ctx.createGain();
+            osc3.type = 'sine';
+            osc3.frequency.value = 1318.51; // E6
+            gain3.gain.setValueAtTime(0.25, now);
+            gain3.gain.setValueAtTime(0.25, now + 0.3);
+            gain3.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+            osc3.connect(gain3);
+            gain3.connect(masterGain);
+            osc3.start(now);
+            osc3.stop(now + 0.6);
+
+            // Rev burst sound effect
+            const revOsc = ctx.createOscillator();
+            const revGain = ctx.createGain();
+            const revFilter = ctx.createBiquadFilter();
+            revOsc.type = 'sawtooth';
+            revOsc.frequency.setValueAtTime(100, now);
+            revOsc.frequency.exponentialRampToValueAtTime(400, now + 0.3);
+            revFilter.type = 'lowpass';
+            revFilter.frequency.setValueAtTime(500, now);
+            revFilter.frequency.exponentialRampToValueAtTime(2000, now + 0.3);
+            revGain.gain.setValueAtTime(0.2, now);
+            revGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+            revOsc.connect(revFilter);
+            revFilter.connect(revGain);
+            revGain.connect(masterGain);
+            revOsc.start(now);
+            revOsc.stop(now + 0.4);
         }
+    }
+
+    startIdleEngine() {
+        // Start the engine sound at idle during countdown
+        if (!this.engineOscillators || !this.engineMasterGain || !this.audioContext) return;
+
+        const now = this.audioContext.currentTime;
+
+        // Set idle RPM frequency (around 800 RPM)
+        const idleFreq = (800 / 60) * 4; // ~53 Hz
+
+        this.engineOscillators.forEach(({ osc, freqMult }) => {
+            const targetFreq = Math.max(20, idleFreq * freqMult);
+            osc.frequency.setTargetAtTime(targetFreq, now, 0.1);
+        });
+
+        // Set idle filter
+        this.engineFilter.frequency.setTargetAtTime(500, now, 0.1);
+
+        // Low idle noise
+        this.engineNoiseGain.gain.setTargetAtTime(0.02, now, 0.1);
+        this.engineNoiseFilter.frequency.setTargetAtTime(400, now, 0.1);
+
+        // Fade in the idle engine sound
+        this.engineMasterGain.gain.setTargetAtTime(0.12, now, 0.3);
     }
 
     playNoise(duration, attack, volume) {
@@ -3174,29 +3467,124 @@ class RacingGame {
         };
         renderDuringCountdown();
 
-        const doCount = () => {
-            if (count > 0) {
-                countdownEl.textContent = count;
-                countdownEl.classList.add('show');
-                setTimeout(() => {
-                    countdownEl.classList.remove('show');
-                    count--;
-                    setTimeout(doCount, 300);
-                }, 700);
-            } else {
-                countdownEl.textContent = 'GO!';
-                countdownEl.style.color = '#00ff00';
-                countdownEl.classList.add('show');
-                this.gameStarted = true;
-                this.raceStartTime = Date.now(); // Track race start for invincibility period
-                setTimeout(() => {
-                    countdownEl.classList.remove('show');
-                    this.animate();
-                }, 1000);
+        // Show "Click to Start" first to initialize audio
+        countdownEl.textContent = 'CLICK TO START';
+        countdownEl.style.fontSize = '48px';
+        countdownEl.style.color = '#ff4400';
+        countdownEl.classList.add('show');
+
+        const startRace = () => {
+            // Initialize audio context on click
+            if (!this.audioContext) {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const ctx = this.audioContext;
+
+                // Create realistic V8 engine sound with multiple harmonics
+                this.engineMasterGain = ctx.createGain();
+                this.engineMasterGain.gain.value = 0;
+                this.engineMasterGain.connect(ctx.destination);
+
+                this.engineCompressor = ctx.createDynamicsCompressor();
+                this.engineCompressor.threshold.value = -24;
+                this.engineCompressor.knee.value = 30;
+                this.engineCompressor.ratio.value = 12;
+                this.engineCompressor.attack.value = 0.003;
+                this.engineCompressor.release.value = 0.25;
+                this.engineCompressor.connect(this.engineMasterGain);
+
+                this.engineFilter = ctx.createBiquadFilter();
+                this.engineFilter.type = 'lowpass';
+                this.engineFilter.frequency.value = 800;
+                this.engineFilter.Q.value = 1;
+                this.engineFilter.connect(this.engineCompressor);
+
+                this.engineOscillators = [];
+                this.engineGains = [];
+
+                const harmonics = [
+                    { type: 'sawtooth', freqMult: 1, gain: 0.4 },
+                    { type: 'square', freqMult: 0.5, gain: 0.3 },
+                    { type: 'sawtooth', freqMult: 2, gain: 0.2 },
+                    { type: 'triangle', freqMult: 4, gain: 0.1 },
+                    { type: 'sawtooth', freqMult: 0.25, gain: 0.15 }
+                ];
+
+                harmonics.forEach(h => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = h.type;
+                    osc.frequency.value = 40;
+                    gain.gain.value = h.gain;
+                    osc.connect(gain);
+                    gain.connect(this.engineFilter);
+                    osc.start();
+                    this.engineOscillators.push({ osc, freqMult: h.freqMult });
+                    this.engineGains.push(gain);
+                });
+
+                const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+                const noiseData = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < noiseData.length; i++) {
+                    noiseData[i] = (Math.random() * 2 - 1) * 0.5;
+                }
+                this.engineNoise = ctx.createBufferSource();
+                this.engineNoise.buffer = noiseBuffer;
+                this.engineNoise.loop = true;
+                this.engineNoiseGain = ctx.createGain();
+                this.engineNoiseGain.gain.value = 0;
+                this.engineNoiseFilter = ctx.createBiquadFilter();
+                this.engineNoiseFilter.type = 'bandpass';
+                this.engineNoiseFilter.frequency.value = 500;
+                this.engineNoiseFilter.Q.value = 0.5;
+                this.engineNoise.connect(this.engineNoiseFilter);
+                this.engineNoiseFilter.connect(this.engineNoiseGain);
+                this.engineNoiseGain.connect(this.engineCompressor);
+                this.engineNoise.start();
             }
+
+            document.removeEventListener('click', startRace);
+            document.removeEventListener('keydown', startRace);
+
+            countdownEl.classList.remove('show');
+            countdownEl.style.fontSize = '150px';
+            countdownEl.style.color = '#fff';
+
+            // Start idle engine sound
+            setTimeout(() => {
+                this.startIdleEngine();
+            }, 300);
+
+            const doCount = () => {
+                if (count > 0) {
+                    countdownEl.textContent = count;
+                    countdownEl.classList.add('show');
+                    // Play countdown beep
+                    this.playSound('countdown', 0.5);
+                    setTimeout(() => {
+                        countdownEl.classList.remove('show');
+                        count--;
+                        setTimeout(doCount, 300);
+                    }, 700);
+                } else {
+                    countdownEl.textContent = 'GO!';
+                    countdownEl.style.color = '#00ff00';
+                    countdownEl.classList.add('show');
+                    // Play GO! sound with rev burst
+                    this.playSound('countdown_go', 0.6);
+                    this.gameStarted = true;
+                    this.raceStartTime = Date.now();
+                    setTimeout(() => {
+                        countdownEl.classList.remove('show');
+                        this.animate();
+                    }, 1000);
+                }
+            };
+
+            setTimeout(doCount, 500);
         };
 
-        setTimeout(doCount, 1000);
+        document.addEventListener('click', startRace);
+        document.addEventListener('keydown', startRace);
     }
 
     updatePlayerCar() {

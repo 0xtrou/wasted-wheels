@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Street Racing 3D</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #gameCanvas {
+            display: block;
+        }
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .speedometer {
+            position: absolute;
+            bottom: 40px;
+            right: 40px;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(0,0,0,0.8) 0%, rgba(20,20,20,0.9) 100%);
+            border-radius: 50%;
+            border: 3px solid #ff4400;
+            box-shadow: 0 0 30px rgba(255,68,0,0.5), inset 0 0 50px rgba(0,0,0,0.8);
+        }
+        .speed-value {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px #ff4400;
+        }
+        .speed-unit {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            color: #ff4400;
+            letter-spacing: 2px;
+        }
+        .speed-needle {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            width: 4px;
+            height: 70px;
+            background: linear-gradient(to top, #ff4400, #ff0000);
+            transform-origin: bottom center;
+            transform: translateX(-50%) rotate(-120deg);
+            border-radius: 2px;
+            box-shadow: 0 0 10px #ff4400;
+        }
+        .position-display {
+            position: absolute;
+            top: 40px;
+            right: 40px;
+            font-size: 64px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 20px #00aaff, 2px 2px 0 #000;
+        }
+        .position-display span {
+            font-size: 32px;
+            color: #00aaff;
+        }
+        .leaderboard {
+            position: absolute;
+            top: 120px;
+            right: 40px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #00aaff;
+            border-radius: 10px;
+            padding: 10px 15px;
+            min-width: 180px;
+        }
+        .leaderboard-title {
+            font-size: 14px;
+            color: #00aaff;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .leaderboard-entry {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+            font-size: 14px;
+            color: #fff;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .leaderboard-entry:last-child {
+            border-bottom: none;
+        }
+        .leaderboard-entry.player {
+            color: #00aaff;
+            font-weight: bold;
+        }
+        .leaderboard-entry.eliminated {
+            color: #ff4444;
+            text-decoration: line-through;
+            opacity: 0.6;
+        }
+        .leaderboard-pos {
+            width: 25px;
+            font-weight: bold;
+        }
+        .leaderboard-name {
+            flex: 1;
+            margin: 0 10px;
+        }
+        .leaderboard-health {
+            width: 50px;
+            height: 8px;
+            background: #333;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .leaderboard-health-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff4444, #ff8800);
+            transition: width 0.3s;
+        }
+        .lap-display {
+            position: absolute;
+            top: 40px;
+            left: 40px;
+            font-size: 24px;
+            color: #fff;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        .nitro-bar {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            width: 200px;
+            height: 20px;
+            background: rgba(0,0,0,0.7);
+            border: 2px solid #00ffff;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .nitro-fill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #00ffff, #0088ff);
+            box-shadow: 0 0 20px #00ffff;
+            transition: width 0.1s;
+        }
+        .nitro-label {
+            position: absolute;
+            bottom: 65px;
+            left: 40px;
+            font-size: 14px;
+            color: #00ffff;
+            letter-spacing: 3px;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        .controls-hint {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            color: rgba(255,255,255,0.5);
+            text-align: center;
+        }
+        .countdown {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 150px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 50px #ff4400, 0 0 100px #ff0000;
+            opacity: 0;
+            transition: all 0.3s;
+        }
+        .countdown.show {
+            opacity: 1;
+            animation: pulse 0.5s ease-out;
+        }
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+        .health-container {
+            position: absolute;
+            top: 80px;
+            left: 40px;
+        }
+        .health-label {
+            font-size: 14px;
+            color: #ff4444;
+            letter-spacing: 3px;
+            text-shadow: 0 0 10px #ff4444;
+            margin-bottom: 5px;
+        }
+        .health-bar {
+            width: 200px;
+            height: 20px;
+            background: rgba(0,0,0,0.7);
+            border: 2px solid #ff4444;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .health-fill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff4444, #ff8800);
+            box-shadow: 0 0 20px #ff4444;
+            transition: width 0.3s;
+        }
+        .warning-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            border: 8px solid transparent;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        .warning-overlay.danger {
+            animation: dangerPulse 0.5s infinite;
+        }
+        @keyframes dangerPulse {
+            0%, 100% { border-color: rgba(255, 0, 0, 0); }
+            50% { border-color: rgba(255, 0, 0, 0.5); }
+        }
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
+        .game-over.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .game-over h1 {
+            font-size: 80px;
+            color: #ff0000;
+            text-shadow: 0 0 50px #ff0000, 0 0 100px #ff4400;
+            margin-bottom: 20px;
+        }
+        .game-over p {
+            font-size: 24px;
+            color: #fff;
+        }
+        .restart-btn {
+            display: none;
+            margin: 40px auto 0;
+            padding: 20px 60px;
+            font-size: 28px;
+            font-weight: bold;
+            color: #fff;
+            background: linear-gradient(135deg, #ff4400 0%, #ff0000 50%, #cc0000 100%);
+            border: 3px solid #ff6600;
+            border-radius: 15px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            box-shadow:
+                0 0 30px rgba(255, 68, 0, 0.8),
+                0 0 60px rgba(255, 0, 0, 0.5),
+                inset 0 0 20px rgba(255, 255, 255, 0.1);
+            transition: all 0.3s;
+            animation: buttonPulse 1.5s infinite;
+            position: relative;
+            overflow: hidden;
+        }
+        .restart-btn::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(
+                45deg,
+                transparent 30%,
+                rgba(255, 255, 255, 0.2) 50%,
+                transparent 70%
+            );
+            animation: buttonShine 2s infinite;
+        }
+        @keyframes buttonPulse {
+            0%, 100% {
+                box-shadow:
+                    0 0 30px rgba(255, 68, 0, 0.8),
+                    0 0 60px rgba(255, 0, 0, 0.5);
+            }
+            50% {
+                box-shadow:
+                    0 0 50px rgba(255, 68, 0, 1),
+                    0 0 100px rgba(255, 0, 0, 0.8),
+                    0 0 150px rgba(255, 100, 0, 0.4);
+            }
+        }
+        @keyframes buttonShine {
+            0% { transform: translateX(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) rotate(45deg); }
+        }
+        .restart-btn:hover {
+            background: linear-gradient(135deg, #ff6600 0%, #ff2200 50%, #ff0000 100%);
+            border-color: #ffaa00;
+            box-shadow:
+                0 0 60px rgba(255, 68, 0, 1),
+                0 0 120px rgba(255, 0, 0, 0.8),
+                0 0 180px rgba(255, 100, 0, 0.5);
+            transform: scale(1.1);
+            letter-spacing: 6px;
+        }
+        .restart-btn:active {
+            transform: scale(0.95);
+        }
+        .missile-warning {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            color: #ff0000;
+            text-shadow: 0 0 20px #ff0000;
+            opacity: 0;
+            animation: warningBlink 0.3s infinite;
+        }
+        .missile-warning.show {
+            opacity: 1;
+        }
+        @keyframes warningBlink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div class="position-display"><span id="position">1</span><span>st</span></div>
+        <div class="leaderboard" id="leaderboard">
+            <div class="leaderboard-title">LEADERBOARD</div>
+        </div>
+        <div class="lap-display">LAP <span id="lap">1</span>/3</div>
+        <div class="health-container">
+            <div class="health-label">HEALTH</div>
+            <div class="health-bar">
+                <div class="health-fill" id="health-fill"></div>
+            </div>
+        </div>
+        <div class="speedometer">
+            <div class="speed-needle" id="needle"></div>
+            <div class="speed-value" id="speed">0</div>
+            <div class="speed-unit">KM/H</div>
+        </div>
+        <div class="nitro-label">NITRO</div>
+        <div class="nitro-bar">
+            <div class="nitro-fill" id="nitro"></div>
+        </div>
+        <div class="controls-hint">WASD or Arrow Keys to drive | SPACE for Nitro Boost (10s / 30s cooldown) | DODGE THE MISSILES!</div>
+        <div class="countdown" id="countdown"></div>
+        <div class="warning-overlay" id="warning-overlay"></div>
+        <div class="game-over" id="game-over">
+            <h1 id="game-over-title">WASTED</h1>
+            <p id="game-over-msg">Your car was destroyed by the police helicopters!</p>
+            <button id="restart-btn" class="restart-btn" onclick="location.reload()">Restart Race</button>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

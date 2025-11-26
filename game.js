@@ -825,18 +825,20 @@ class RacingGame {
 
         this.engineOscillators.forEach(({ osc, freqMult }) => {
             const targetFreq = Math.max(20, idleFreq * freqMult);
-            osc.frequency.setTargetAtTime(targetFreq, now, 0.1);
+            osc.frequency.setValueAtTime(targetFreq, now);
         });
 
         // Set idle filter
-        this.engineFilter.frequency.setTargetAtTime(500, now, 0.1);
+        this.engineFilter.frequency.setValueAtTime(600, now);
 
-        // Low idle noise
-        this.engineNoiseGain.gain.setTargetAtTime(0.02, now, 0.1);
-        this.engineNoiseFilter.frequency.setTargetAtTime(400, now, 0.1);
+        // Idle noise
+        this.engineNoiseGain.gain.setValueAtTime(0.03, now);
+        this.engineNoiseFilter.frequency.setValueAtTime(500, now);
 
-        // Fade in the idle engine sound
-        this.engineMasterGain.gain.setTargetAtTime(0.12, now, 0.3);
+        // Immediately set the idle engine sound (louder!)
+        this.engineMasterGain.gain.setValueAtTime(0.18, now);
+
+        console.log('Engine idle started!');
     }
 
     playNoise(duration, attack, volume) {
@@ -3467,13 +3469,72 @@ class RacingGame {
         };
         renderDuringCountdown();
 
-        // Show "Click to Start" first to initialize audio
-        countdownEl.textContent = 'CLICK TO START';
-        countdownEl.style.fontSize = '48px';
-        countdownEl.style.color = '#ff4400';
-        countdownEl.classList.add('show');
+        // Create intro story overlay
+        const introOverlay = document.createElement('div');
+        introOverlay.id = 'intro-overlay';
+        introOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        `;
+
+        introOverlay.innerHTML = `
+            <div style="max-width: 750px; text-align: center;">
+                <h1 style="font-size: 52px; color: #ff4400; text-shadow: 0 0 30px #ff4400, 0 0 60px #ff0000; margin-bottom: 10px; letter-spacing: 4px;">
+                    STREET RACING 3D
+                </h1>
+                <div style="font-size: 16px; color: #ffaa00; margin-bottom: 20px; letter-spacing: 2px;">
+                    ~ A TOTALLY LEGITIMATE RACING STORY ~
+                </div>
+                <div style="font-size: 14px; color: #fff; line-height: 1.7; text-align: left; background: rgba(255,68,0,0.1); padding: 20px; border-radius: 15px; border: 2px solid #ff4400;">
+                    <p style="margin-bottom: 12px;">
+                        🏎️ <span style="color: #00aaff;">You are a "totally innocent" street racer</span> who accidentally wandered onto a haunted, police-surveilled track.
+                    </p>
+                    <p style="margin-bottom: 12px;">
+                        🚁 <span style="color: #ff4444;">Police helicopters</span> think you're a criminal and are launching missiles. Terrible aim, unlimited ammo. Classic cops.
+                    </p>
+                    <p style="margin-bottom: 12px;">
+                        👻 <span style="color: #ff00ff;">The ghosts?</span> Spirits of racers who crashed reading the leaderboard. Spooky AND ironic.
+                    </p>
+                    <p style="margin-bottom: 12px;">
+                        💚 <span style="color: #00ff44;">Health</span> and 🛡️ <span style="color: #00aaff;">Shield</span> pickups spawn on track. Grab them or watch AI steal them!
+                    </p>
+                    <p style="margin-bottom: 0;">
+                        🏁 <span style="color: #ffff00;">Complete 10 LAPS to win!</span> First 10s = invincible. After that... good luck! 😈
+                    </p>
+                </div>
+                <div style="margin-top: 15px; font-size: 13px; color: #888;">
+                    <span style="color: #00ffff;">WASD/Arrows</span> = Drive | <span style="color: #00ffff;">SPACE</span> = Nitro | <span style="color: #ff4444;">Don't rear-end cars (10x damage!)</span>
+                </div>
+                <div id="click-to-start-btn" style="margin-top: 25px; font-size: 36px; color: #ff4400; text-shadow: 0 0 20px #ff4400, 0 0 40px #ff0000; cursor: pointer; letter-spacing: 4px; padding: 15px 35px; border: 3px solid #ff4400; border-radius: 15px; background: rgba(255,68,0,0.2); display: inline-block;">
+                    🖱️ CLICK TO START 🖱️
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(introOverlay);
 
         const startRace = () => {
+            // Remove intro overlay
+            if (introOverlay.parentNode) {
+                introOverlay.parentNode.removeChild(introOverlay);
+            }
+
+            // Reset countdown element styling
+            countdownEl.style.fontSize = '150px';
+            countdownEl.style.color = '#fff';
+
             // Initialize audio context on click
             if (!this.audioContext) {
                 this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -3543,16 +3604,12 @@ class RacingGame {
             }
 
             document.removeEventListener('click', startRace);
-            document.removeEventListener('keydown', startRace);
 
-            countdownEl.classList.remove('show');
+            // Start idle engine sound immediately after click
+            this.startIdleEngine();
+
             countdownEl.style.fontSize = '150px';
             countdownEl.style.color = '#fff';
-
-            // Start idle engine sound
-            setTimeout(() => {
-                this.startIdleEngine();
-            }, 300);
 
             const doCount = () => {
                 if (count > 0) {
@@ -3580,11 +3637,12 @@ class RacingGame {
                 }
             };
 
-            setTimeout(doCount, 500);
+            // Start countdown after a short delay so idle engine is heard first
+            setTimeout(doCount, 800);
         };
 
+        // Only click to start, no keyboard
         document.addEventListener('click', startRace);
-        document.addEventListener('keydown', startRace);
     }
 
     updatePlayerCar() {

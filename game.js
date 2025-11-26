@@ -417,6 +417,132 @@ class RacingGame {
                 osc.start(now + i * 0.1);
                 osc.stop(now + i * 0.1 + 0.3);
             });
+
+        } else if (type === 'explosion') {
+            // Epic missile explosion sound
+            const masterGain = ctx.createGain();
+            masterGain.gain.value = volume;
+            masterGain.connect(ctx.destination);
+
+            // Compressor for punch
+            const compressor = ctx.createDynamicsCompressor();
+            compressor.threshold.value = -20;
+            compressor.knee.value = 10;
+            compressor.ratio.value = 16;
+            compressor.attack.value = 0;
+            compressor.release.value = 0.1;
+            compressor.connect(masterGain);
+
+            // 1. Initial BOOM - deep bass explosion
+            const boomOsc = ctx.createOscillator();
+            const boomGain = ctx.createGain();
+            boomOsc.type = 'sine';
+            boomOsc.frequency.setValueAtTime(80, now);
+            boomOsc.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+            boomGain.gain.setValueAtTime(1, now);
+            boomGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            boomOsc.connect(boomGain);
+            boomGain.connect(compressor);
+            boomOsc.start(now);
+            boomOsc.stop(now + 0.5);
+
+            // 2. Sub-bass rumble
+            const subOsc = ctx.createOscillator();
+            const subGain = ctx.createGain();
+            subOsc.type = 'sine';
+            subOsc.frequency.setValueAtTime(40, now);
+            subOsc.frequency.exponentialRampToValueAtTime(15, now + 0.8);
+            subGain.gain.setValueAtTime(0.8, now);
+            subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+            subOsc.connect(subGain);
+            subGain.connect(compressor);
+            subOsc.start(now);
+            subOsc.stop(now + 0.8);
+
+            // 3. Mid-range explosion crackle
+            const crackleOsc = ctx.createOscillator();
+            const crackleGain = ctx.createGain();
+            const crackleFilter = ctx.createBiquadFilter();
+            crackleOsc.type = 'sawtooth';
+            crackleOsc.frequency.setValueAtTime(200, now);
+            crackleOsc.frequency.exponentialRampToValueAtTime(60, now + 0.3);
+            crackleFilter.type = 'bandpass';
+            crackleFilter.frequency.value = 300;
+            crackleFilter.Q.value = 1;
+            crackleGain.gain.setValueAtTime(0.6, now);
+            crackleGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            crackleOsc.connect(crackleFilter);
+            crackleFilter.connect(crackleGain);
+            crackleGain.connect(compressor);
+            crackleOsc.start(now);
+            crackleOsc.stop(now + 0.3);
+
+            // 4. High frequency sizzle/fire
+            const sizzleOsc = ctx.createOscillator();
+            const sizzleGain = ctx.createGain();
+            const sizzleFilter = ctx.createBiquadFilter();
+            sizzleOsc.type = 'sawtooth';
+            sizzleOsc.frequency.setValueAtTime(800, now);
+            sizzleOsc.frequency.exponentialRampToValueAtTime(200, now + 0.4);
+            sizzleFilter.type = 'highpass';
+            sizzleFilter.frequency.value = 400;
+            sizzleGain.gain.setValueAtTime(0.3, now);
+            sizzleGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+            sizzleOsc.connect(sizzleFilter);
+            sizzleFilter.connect(sizzleGain);
+            sizzleGain.connect(compressor);
+            sizzleOsc.start(now);
+            sizzleOsc.stop(now + 0.4);
+
+            // 5. Explosion noise burst (debris/shrapnel)
+            const noiseLen = 0.6;
+            const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * noiseLen, ctx.sampleRate);
+            const noiseData = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseData.length; i++) {
+                noiseData[i] = (Math.random() * 2 - 1);
+            }
+            const noiseSource = ctx.createBufferSource();
+            noiseSource.buffer = noiseBuffer;
+            const noiseGain = ctx.createGain();
+            const noiseFilter = ctx.createBiquadFilter();
+            noiseFilter.type = 'lowpass';
+            noiseFilter.frequency.setValueAtTime(4000, now);
+            noiseFilter.frequency.exponentialRampToValueAtTime(500, now + noiseLen);
+            noiseGain.gain.setValueAtTime(0.7, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + noiseLen);
+            noiseSource.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(compressor);
+            noiseSource.start(now);
+            noiseSource.stop(now + noiseLen);
+
+            // 6. Secondary boom (echo/reverb effect)
+            const echo1Osc = ctx.createOscillator();
+            const echo1Gain = ctx.createGain();
+            echo1Osc.type = 'sine';
+            echo1Osc.frequency.setValueAtTime(60, now + 0.1);
+            echo1Osc.frequency.exponentialRampToValueAtTime(25, now + 0.4);
+            echo1Gain.gain.setValueAtTime(0, now);
+            echo1Gain.gain.setValueAtTime(0.4, now + 0.1);
+            echo1Gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+            echo1Osc.connect(echo1Gain);
+            echo1Gain.connect(compressor);
+            echo1Osc.start(now);
+            echo1Osc.stop(now + 0.5);
+
+            // 7. Distant rumble tail
+            const tailOsc = ctx.createOscillator();
+            const tailGain = ctx.createGain();
+            tailOsc.type = 'sine';
+            tailOsc.frequency.setValueAtTime(35, now + 0.2);
+            tailOsc.frequency.exponentialRampToValueAtTime(20, now + 1.0);
+            tailGain.gain.setValueAtTime(0, now);
+            tailGain.gain.linearRampToValueAtTime(0.3, now + 0.25);
+            tailGain.gain.exponentialRampToValueAtTime(0.01, now + 1.0);
+            tailOsc.connect(tailGain);
+            tailGain.connect(compressor);
+            tailOsc.start(now);
+            tailOsc.stop(now + 1.0);
         }
     }
 
@@ -2599,6 +2725,9 @@ class RacingGame {
     }
 
     createExplosion(position) {
+        // Play epic explosion sound
+        this.playSound('explosion', 0.6);
+
         const explosion = new THREE.Group();
         explosion.position.copy(position);
 

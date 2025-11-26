@@ -68,6 +68,12 @@ class RacingGame {
         this.roadSegments = [];
         this.staticObjects = [];
 
+        // Sound system
+        this.audioContext = null;
+        this.sounds = {};
+        this.engineOscillator = null;
+        this.engineGain = null;
+
         this.init();
     }
 
@@ -103,11 +109,241 @@ class RacingGame {
         this.setupControls();
         window.addEventListener('resize', () => this.onResize());
 
+        // Initialize sound system
+        this.initSoundSystem();
+
         // Initialize health display
         this.updateHealthDisplay();
 
         // Start game loop
         this.countdown();
+    }
+
+    initSoundSystem() {
+        // Initialize audio context on first user interaction
+        const initAudio = () => {
+            if (this.audioContext) return;
+
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Create engine sound (continuous oscillator)
+            this.engineOscillator = this.audioContext.createOscillator();
+            this.engineGain = this.audioContext.createGain();
+            this.engineOscillator.type = 'sawtooth';
+            this.engineOscillator.frequency.value = 80;
+            this.engineGain.gain.value = 0;
+            this.engineOscillator.connect(this.engineGain);
+            this.engineGain.connect(this.audioContext.destination);
+            this.engineOscillator.start();
+
+            document.removeEventListener('keydown', initAudio);
+            document.removeEventListener('click', initAudio);
+        };
+
+        document.addEventListener('keydown', initAudio);
+        document.addEventListener('click', initAudio);
+    }
+
+    playSound(type, volume = 0.3) {
+        if (!this.audioContext) return;
+
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+
+        if (type === 'nitro') {
+            // Whoosh/boost sound
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const filter = ctx.createBiquadFilter();
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+            osc.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(2000, now);
+            filter.frequency.exponentialRampToValueAtTime(500, now + 0.5);
+
+            gain.gain.setValueAtTime(volume * 0.5, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.5);
+
+            // Add noise burst
+            this.playNoise(0.1, 0.3, volume * 0.3);
+
+        } else if (type === 'hit') {
+            // Impact sound
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(50, now + 0.15);
+
+            gain.gain.setValueAtTime(volume * 0.6, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.15);
+
+            this.playNoise(0.05, 0.1, volume * 0.4);
+
+        } else if (type === 'ghost') {
+            // Spooky whoosh
+            const osc1 = ctx.createOscillator();
+            const osc2 = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const filter = ctx.createBiquadFilter();
+
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(400, now);
+            osc1.frequency.exponentialRampToValueAtTime(200, now + 0.4);
+
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(600, now);
+            osc2.frequency.exponentialRampToValueAtTime(150, now + 0.5);
+
+            filter.type = 'bandpass';
+            filter.frequency.value = 400;
+            filter.Q.value = 2;
+
+            gain.gain.setValueAtTime(volume * 0.4, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+
+            osc1.connect(filter);
+            osc2.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc1.start(now);
+            osc2.start(now);
+            osc1.stop(now + 0.5);
+            osc2.stop(now + 0.5);
+
+        } else if (type === 'health') {
+            // Pleasant chime
+            const frequencies = [523, 659, 784]; // C5, E5, G5
+            frequencies.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+
+                gain.gain.setValueAtTime(0, now + i * 0.08);
+                gain.gain.linearRampToValueAtTime(volume * 0.3, now + i * 0.08 + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.08 + 0.4);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.start(now + i * 0.08);
+                osc.stop(now + i * 0.08 + 0.4);
+            });
+
+        } else if (type === 'shield') {
+            // Power-up sound
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const filter = ctx.createBiquadFilter();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(300, now);
+            osc.frequency.exponentialRampToValueAtTime(800, now + 0.2);
+            osc.frequency.setValueAtTime(800, now + 0.2);
+            osc.frequency.exponentialRampToValueAtTime(1200, now + 0.4);
+
+            filter.type = 'lowpass';
+            filter.frequency.value = 2000;
+
+            gain.gain.setValueAtTime(volume * 0.3, now);
+            gain.gain.setValueAtTime(volume * 0.3, now + 0.35);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.5);
+
+        } else if (type === 'lap') {
+            // Lap complete fanfare
+            const notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
+            notes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                osc.type = 'square';
+                osc.frequency.value = freq;
+
+                gain.gain.setValueAtTime(0, now + i * 0.1);
+                gain.gain.linearRampToValueAtTime(volume * 0.25, now + i * 0.1 + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.3);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.start(now + i * 0.1);
+                osc.stop(now + i * 0.1 + 0.3);
+            });
+        }
+    }
+
+    playNoise(duration, attack, volume) {
+        if (!this.audioContext) return;
+
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+        const bufferSize = ctx.sampleRate * duration;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1);
+        }
+
+        const noise = ctx.createBufferSource();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        noise.buffer = buffer;
+        filter.type = 'lowpass';
+        filter.frequency.value = 1000;
+
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(volume, now + attack);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        noise.start(now);
+        noise.stop(now + duration);
+    }
+
+    updateEngineSound() {
+        if (!this.engineOscillator || !this.engineGain || !this.audioContext) return;
+
+        const speed = Math.abs(this.speed);
+        const targetFreq = 60 + speed * 2.5;
+        const targetGain = this.gameStarted && !this.gameOver ? Math.min(speed / 150, 0.15) : 0;
+
+        // Smooth transitions
+        const now = this.audioContext.currentTime;
+        this.engineOscillator.frequency.setTargetAtTime(targetFreq, now, 0.1);
+        this.engineGain.gain.setTargetAtTime(targetGain, now, 0.1);
     }
 
     createSkybox() {
@@ -1537,6 +1773,9 @@ class RacingGame {
 
         // Floating damage text for ALL cars
         this.createFloatingText(car, 'HAUNTED!', 0xff00ff);
+
+        // Play ghost sound
+        this.playSound('ghost', 0.4);
     }
 
     // Pickup items system
@@ -1688,6 +1927,9 @@ class RacingGame {
             const healAmount = 15 + Math.floor(Math.random() * 20); // 15-35 health
             car.health = Math.min(car.health + healAmount, 100);
 
+            // Play health pickup sound
+            this.playSound('health', 0.4);
+
             // Create floating text effect for ALL cars
             this.createFloatingText(car, '+' + healAmount + ' HP', 0x00ff44);
 
@@ -1699,6 +1941,9 @@ class RacingGame {
             // Shield - 5 seconds of protection
             car.shieldActive = true;
             car.shieldEndTime = Date.now() + 5000;
+
+            // Play shield pickup sound
+            this.playSound('shield', 0.4);
 
             // Create shield visual on car
             this.createCarShield(car);
@@ -1796,8 +2041,9 @@ class RacingGame {
         }
     }
 
-    createFloatingText(car, text, color) {
+    createFloatingText(car, text, color, duration = 1) {
         // Create 3D floating text above car using sprite
+        // duration: 1 = normal, 2 = twice as long, etc.
         const canvas = document.createElement('canvas');
         canvas.width = 256;
         canvas.height = 64;
@@ -1827,9 +2073,9 @@ class RacingGame {
         sprite.position.copy(car.position);
         sprite.position.y += 5;
 
-        sprite.velocity = 0.08;
+        sprite.velocity = 0.08 / duration;
         sprite.life = 1;
-        sprite.decay = 0.02;
+        sprite.decay = 0.02 / duration;
         sprite.isSprite = true;
 
         this.scene.add(sprite);
@@ -2716,6 +2962,7 @@ class RacingGame {
             this.nitroBoostActive = true;
             this.nitroBoostEndTime = now + this.nitroBoostDuration;
             this.nitroActive = true;
+            this.playSound('nitro', 0.5); // Nitro boost sound
         }
 
         // Apply boost effect
@@ -2848,14 +3095,17 @@ class RacingGame {
                         // Car rear-ended other - car takes 10x damage (20), other takes 1x (2)
                         this.applyDamage(car, baseDamage * 10, 'collision');
                         this.applyDamage(other, baseDamage, 'collision');
+                        this.playSound('hit', 0.5);
                     } else if (otherHitCarRear) {
                         // Other rear-ended car - other takes 10x damage (20), car takes 1x (2)
                         this.applyDamage(car, baseDamage, 'collision');
                         this.applyDamage(other, baseDamage * 10, 'collision');
+                        this.playSound('hit', 0.5);
                     } else {
                         // Side collision - equal damage (5 each)
                         this.applyDamage(car, baseDamage * 2.5, 'collision');
                         this.applyDamage(other, baseDamage * 2.5, 'collision');
+                        this.playSound('hit', 0.3);
                     }
                 }
             }
@@ -3059,18 +3309,31 @@ class RacingGame {
             if (prevProgress > numPoints * 0.8 && closestPoint < numPoints * 0.2) {
                 car.lap = (car.lap || 1) + 1;
 
+                // Play lap sound for player
+                if (car.isPlayer) {
+                    this.playSound('lap', 0.4);
+                }
+
                 // Update lap display for player
                 if (car.isPlayer) {
-                    document.getElementById('lap').textContent = Math.min(car.lap, 3);
+                    document.getElementById('lap').textContent = Math.min(car.lap, 10);
+
+                    // Create epic floating text for lap completion
+                    if (car.lap <= 10) {
+                        const lapText = car.lap === 10 ? 'FINAL LAP!' : 'LAP ' + car.lap + '!';
+                        const lapColor = car.lap === 10 ? 0xff4400 : 0x00ffff;
+                        const lapDuration = car.lap === 10 ? 4 : 3; // Final lap lasts even longer!
+                        this.createFloatingText(car, lapText, lapColor, lapDuration);
+                    }
 
                     // Check for race completion
-                    if (car.lap > 3) {
+                    if (car.lap > 10) {
                         this.finishRace(car);
                         return;
                     }
                 } else {
                     // AI finished the race
-                    if (car.lap > 3 && !this.raceFinished) {
+                    if (car.lap > 10 && !this.raceFinished) {
                         this.finishRace(car);
                         return;
                     }
@@ -3188,6 +3451,7 @@ class RacingGame {
         this.updatePickups();
         this.updateCarShields();
         this.updateInvincibilityUI();
+        this.updateEngineSound();
         this.updateCamera();
         this.updatePositions();
 

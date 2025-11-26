@@ -78,6 +78,51 @@
         #gameCanvas {
             display: block;
         }
+        /* Mobile blocker */
+        #mobile-blocker {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0d0d1a 50%, #1a0a0a 100%);
+            z-index: 9999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 40px;
+        }
+        #mobile-blocker h1 {
+            font-size: 48px;
+            color: #ff4400;
+            text-shadow: 0 0 30px #ff4400;
+            margin-bottom: 20px;
+        }
+        #mobile-blocker .icon {
+            font-size: 80px;
+            margin-bottom: 30px;
+        }
+        #mobile-blocker p {
+            font-size: 18px;
+            color: #fff;
+            line-height: 1.6;
+            max-width: 400px;
+            margin-bottom: 30px;
+        }
+        #mobile-blocker .hint {
+            font-size: 14px;
+            color: #888;
+        }
+        @media (max-width: 768px), (pointer: coarse) {
+            #mobile-blocker {
+                display: flex;
+            }
+            #gameCanvas, #hud {
+                display: none !important;
+            }
+        }
         #hud {
             position: absolute;
             top: 0;
@@ -443,6 +488,14 @@
     </style>
 </head>
 <body>
+    <!-- Mobile Blocker -->
+    <div id="mobile-blocker">
+        <div class="icon">🏎️</div>
+        <h1>WASTED WHEELS</h1>
+        <p>This game requires a keyboard to play and is not available on mobile devices.</p>
+        <p class="hint">Please visit on a desktop or laptop computer.</p>
+    </div>
+
     <div id="hud">
         <div class="position-display"><span id="position">1</span><span>st</span></div>
         <div class="leaderboard" id="leaderboard">

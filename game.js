@@ -212,6 +212,38 @@ class RacingGame {
     playSound(type, volume = 0.3) {
         if (!this.audioContext) return;
 
+        // Sound queue system - max 5 playing sounds
+        // FIFO: first in, first out - but only remove sounds that played 100ms+
+        if (!this.activeSounds) this.activeSounds = [];
+
+        const currentTime = Date.now();
+        const minPlayTime = 100; // 100ms minimum play time
+
+        // Clean up sounds that have finished (played for 2+ seconds)
+        this.activeSounds = this.activeSounds.filter(s => currentTime - s.startTime < 2000);
+
+        // Check if we're at max capacity (5 sounds)
+        if (this.activeSounds.length >= 5) {
+            // Find the oldest sound that has played for at least 100ms
+            const oldEnough = this.activeSounds.filter(s => currentTime - s.startTime >= minPlayTime);
+
+            if (oldEnough.length > 0) {
+                // Remove the oldest one that's played long enough
+                const toRemove = oldEnough[0];
+                const idx = this.activeSounds.indexOf(toRemove);
+                if (idx > -1) {
+                    this.activeSounds.splice(idx, 1);
+                }
+            } else {
+                // All sounds are too new (< 100ms), skip this sound
+                return;
+            }
+        }
+
+        // Track this sound
+        const soundEntry = { type, startTime: currentTime };
+        this.activeSounds.push(soundEntry);
+
         const ctx = this.audioContext;
         const now = ctx.currentTime;
 
@@ -3491,6 +3523,9 @@ class RacingGame {
 
         introOverlay.innerHTML = `
             <div style="max-width: 750px; text-align: center;">
+                <div id="click-anywhere-msg" style="font-size: 28px; color: #ffaa00; text-shadow: 0 0 20px #ffaa00; margin-bottom: 30px; animation: pulse 1s infinite; cursor: pointer;">
+                    🔊 CLICK ANYWHERE TO ENABLE AUDIO 🔊
+                </div>
                 <h1 style="font-size: 52px; color: #ff4400; text-shadow: 0 0 30px #ff4400, 0 0 60px #ff0000; margin-bottom: 10px; letter-spacing: 4px;">
                     STREET RACING 3D
                 </h1>
@@ -3517,7 +3552,7 @@ class RacingGame {
                 <div style="margin-top: 15px; font-size: 13px; color: #888;">
                     <span style="color: #00ffff;">WASD/Arrows</span> = Drive | <span style="color: #00ffff;">SPACE</span> = Nitro | <span style="color: #ff4444;">Don't rear-end cars (10x damage!)</span>
                 </div>
-                <div id="click-to-start-btn" style="margin-top: 25px; font-size: 36px; color: #ff4400; text-shadow: 0 0 20px #ff4400, 0 0 40px #ff0000; cursor: pointer; letter-spacing: 4px; padding: 15px 35px; border: 3px solid #ff4400; border-radius: 15px; background: rgba(255,68,0,0.2); display: inline-block;">
+                <div id="click-to-start-btn" style="margin-top: 25px; font-size: 36px; color: #ff4400; text-shadow: 0 0 20px #ff4400, 0 0 40px #ff0000; cursor: pointer; letter-spacing: 4px; padding: 15px 35px; border: 3px solid #ff4400; border-radius: 15px; background: rgba(255,68,0,0.2); display: inline-block; opacity: 0.3; pointer-events: none;">
                     🖱️ CLICK TO START 🖱️
                 </div>
             </div>
@@ -3525,7 +3560,108 @@ class RacingGame {
 
         document.body.appendChild(introOverlay);
 
-        const startRace = () => {
+        // Initialize audio on first click anywhere on intro screen
+        const initAudioOnClick = () => {
+            if (this.audioContext) return;
+
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const ctx = this.audioContext;
+
+            // Create realistic V8 engine sound with multiple harmonics
+            this.engineMasterGain = ctx.createGain();
+            this.engineMasterGain.gain.value = 0;
+            this.engineMasterGain.connect(ctx.destination);
+
+            this.engineCompressor = ctx.createDynamicsCompressor();
+            this.engineCompressor.threshold.value = -24;
+            this.engineCompressor.knee.value = 30;
+            this.engineCompressor.ratio.value = 12;
+            this.engineCompressor.attack.value = 0.003;
+            this.engineCompressor.release.value = 0.25;
+            this.engineCompressor.connect(this.engineMasterGain);
+
+            this.engineFilter = ctx.createBiquadFilter();
+            this.engineFilter.type = 'lowpass';
+            this.engineFilter.frequency.value = 800;
+            this.engineFilter.Q.value = 1;
+            this.engineFilter.connect(this.engineCompressor);
+
+            this.engineOscillators = [];
+            this.engineGains = [];
+
+            const harmonics = [
+                { type: 'sawtooth', freqMult: 1, gain: 0.4 },
+                { type: 'square', freqMult: 0.5, gain: 0.3 },
+                { type: 'sawtooth', freqMult: 2, gain: 0.2 },
+                { type: 'triangle', freqMult: 4, gain: 0.1 },
+                { type: 'sawtooth', freqMult: 0.25, gain: 0.15 }
+            ];
+
+            harmonics.forEach(h => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = h.type;
+                osc.frequency.value = 40;
+                gain.gain.value = h.gain;
+                osc.connect(gain);
+                gain.connect(this.engineFilter);
+                osc.start();
+                this.engineOscillators.push({ osc, freqMult: h.freqMult });
+                this.engineGains.push(gain);
+            });
+
+            const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+            const noiseData = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseData.length; i++) {
+                noiseData[i] = (Math.random() * 2 - 1) * 0.5;
+            }
+            this.engineNoise = ctx.createBufferSource();
+            this.engineNoise.buffer = noiseBuffer;
+            this.engineNoise.loop = true;
+            this.engineNoiseGain = ctx.createGain();
+            this.engineNoiseGain.gain.value = 0;
+            this.engineNoiseFilter = ctx.createBiquadFilter();
+            this.engineNoiseFilter.type = 'bandpass';
+            this.engineNoiseFilter.frequency.value = 500;
+            this.engineNoiseFilter.Q.value = 0.5;
+            this.engineNoise.connect(this.engineNoiseFilter);
+            this.engineNoiseFilter.connect(this.engineNoiseGain);
+            this.engineNoiseGain.connect(this.engineCompressor);
+            this.engineNoise.start();
+
+            // Start idle engine sound immediately
+            this.startIdleEngine();
+
+            // Hide the "click anywhere" message and enable the start button
+            const clickAnywhereMsg = document.getElementById('click-anywhere-msg');
+            const startBtn = document.getElementById('click-to-start-btn');
+            if (clickAnywhereMsg) {
+                clickAnywhereMsg.innerHTML = '🔊 ENGINE RUNNING - AUDIO ENABLED 🔊';
+                clickAnywhereMsg.style.color = '#00ff00';
+                clickAnywhereMsg.style.textShadow = '0 0 20px #00ff00';
+            }
+            if (startBtn) {
+                startBtn.style.opacity = '1';
+                startBtn.style.pointerEvents = 'auto';
+            }
+
+            // Remove this listener after first click
+            introOverlay.removeEventListener('click', initAudioOnClick);
+        };
+
+        // Add listener to init audio on any click on intro
+        introOverlay.addEventListener('click', initAudioOnClick);
+
+        const startRace = (e) => {
+            // Only start race if clicking the button
+            const btn = document.getElementById('click-to-start-btn');
+            if (!btn.contains(e.target) && e.target !== btn) {
+                return;
+            }
+
+            // Make sure audio is initialized
+            initAudioOnClick();
+
             // Remove intro overlay
             if (introOverlay.parentNode) {
                 introOverlay.parentNode.removeChild(introOverlay);
@@ -3535,81 +3671,7 @@ class RacingGame {
             countdownEl.style.fontSize = '150px';
             countdownEl.style.color = '#fff';
 
-            // Initialize audio context on click
-            if (!this.audioContext) {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const ctx = this.audioContext;
-
-                // Create realistic V8 engine sound with multiple harmonics
-                this.engineMasterGain = ctx.createGain();
-                this.engineMasterGain.gain.value = 0;
-                this.engineMasterGain.connect(ctx.destination);
-
-                this.engineCompressor = ctx.createDynamicsCompressor();
-                this.engineCompressor.threshold.value = -24;
-                this.engineCompressor.knee.value = 30;
-                this.engineCompressor.ratio.value = 12;
-                this.engineCompressor.attack.value = 0.003;
-                this.engineCompressor.release.value = 0.25;
-                this.engineCompressor.connect(this.engineMasterGain);
-
-                this.engineFilter = ctx.createBiquadFilter();
-                this.engineFilter.type = 'lowpass';
-                this.engineFilter.frequency.value = 800;
-                this.engineFilter.Q.value = 1;
-                this.engineFilter.connect(this.engineCompressor);
-
-                this.engineOscillators = [];
-                this.engineGains = [];
-
-                const harmonics = [
-                    { type: 'sawtooth', freqMult: 1, gain: 0.4 },
-                    { type: 'square', freqMult: 0.5, gain: 0.3 },
-                    { type: 'sawtooth', freqMult: 2, gain: 0.2 },
-                    { type: 'triangle', freqMult: 4, gain: 0.1 },
-                    { type: 'sawtooth', freqMult: 0.25, gain: 0.15 }
-                ];
-
-                harmonics.forEach(h => {
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    osc.type = h.type;
-                    osc.frequency.value = 40;
-                    gain.gain.value = h.gain;
-                    osc.connect(gain);
-                    gain.connect(this.engineFilter);
-                    osc.start();
-                    this.engineOscillators.push({ osc, freqMult: h.freqMult });
-                    this.engineGains.push(gain);
-                });
-
-                const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-                const noiseData = noiseBuffer.getChannelData(0);
-                for (let i = 0; i < noiseData.length; i++) {
-                    noiseData[i] = (Math.random() * 2 - 1) * 0.5;
-                }
-                this.engineNoise = ctx.createBufferSource();
-                this.engineNoise.buffer = noiseBuffer;
-                this.engineNoise.loop = true;
-                this.engineNoiseGain = ctx.createGain();
-                this.engineNoiseGain.gain.value = 0;
-                this.engineNoiseFilter = ctx.createBiquadFilter();
-                this.engineNoiseFilter.type = 'bandpass';
-                this.engineNoiseFilter.frequency.value = 500;
-                this.engineNoiseFilter.Q.value = 0.5;
-                this.engineNoise.connect(this.engineNoiseFilter);
-                this.engineNoiseFilter.connect(this.engineNoiseGain);
-                this.engineNoiseGain.connect(this.engineCompressor);
-                this.engineNoise.start();
-            }
-
             document.removeEventListener('click', startRace);
-
-            // Start idle engine sound immediately after click
-            this.startIdleEngine();
-
-            countdownEl.style.fontSize = '150px';
-            countdownEl.style.color = '#fff';
 
             const doCount = () => {
                 if (count > 0) {

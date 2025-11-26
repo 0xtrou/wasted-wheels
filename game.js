@@ -3964,7 +3964,27 @@ class RacingGame {
             let closestPoint = car.trackProgress || 0;
             const prevProgress = car.trackProgress || 0;
 
+            // Search for closest track point, but limit search range to prevent
+            // cars behind start line from matching end-of-track points
+            // Search within a reasonable range of current progress (±25% of track)
+            const searchRange = Math.floor(numPoints * 0.25);
+            const searchStart = Math.max(0, prevProgress - searchRange);
+            const searchEnd = Math.min(numPoints, prevProgress + searchRange);
+
+            // Also search near start/end for lap transitions
             for (let i = 0; i < numPoints; i += 5) {
+                // Only search within range, OR near start (0-20%) OR near end (80-100%)
+                const inRange = (i >= searchStart && i <= searchEnd);
+                const nearStart = (i < numPoints * 0.2);
+                const nearEnd = (i > numPoints * 0.8);
+                const prevNearStart = (prevProgress < numPoints * 0.2);
+                const prevNearEnd = (prevProgress > numPoints * 0.8);
+
+                // Allow searching near start/end only if car was already near those areas
+                if (!inRange && !(nearStart && prevNearStart) && !(nearEnd && prevNearEnd) && !(nearStart && prevNearEnd) && !(nearEnd && prevNearStart)) {
+                    continue;
+                }
+
                 const point = this.trackPoints[i];
                 const dx = point.x - car.position.x;
                 const dz = point.z - car.position.z;
@@ -4012,14 +4032,17 @@ class RacingGame {
             }
         }
 
-        // Sort by lap first, then by progress (destroyed cars go to bottom)
+        // Sort by total progress (lap * trackLength + trackProgress)
+        // This ensures cars closest to finishing lap 10 are ranked first
+        const trackLength = this.trackPoints.length;
         allCars.sort((a, b) => {
             if (a.destroyed && !b.destroyed) return 1;
             if (!a.destroyed && b.destroyed) return -1;
             const lapA = a.lap || 1;
             const lapB = b.lap || 1;
-            if (lapA !== lapB) return lapB - lapA;
-            return b.trackProgress - a.trackProgress;
+            const totalProgressA = (lapA * trackLength) + (a.trackProgress || 0);
+            const totalProgressB = (lapB * trackLength) + (b.trackProgress || 0);
+            return totalProgressB - totalProgressA;
         });
 
         this.position = allCars.indexOf(this.playerCar) + 1;

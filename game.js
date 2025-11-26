@@ -46,7 +46,7 @@ class RacingGame {
 
         // Pickup items system
         this.pickups = [];
-        this.maxPickups = 8;
+        this.maxPickups = 15; // More pickups on track
         this.pickupEffects = [];
 
         // Car names for leaderboard
@@ -1471,6 +1471,9 @@ class RacingGame {
         ghost.collected = true;
         this.ghostsCollected++;
 
+        // Create ghost hit effect for ALL cars
+        this.createGhostHitEffect(ghost.position.clone(), car);
+
         // Remove ghost from scene and array
         this.scene.remove(ghost);
         const idx = this.ghosts.indexOf(ghost);
@@ -1487,6 +1490,53 @@ class RacingGame {
 
         // Apply damage using unified damage system
         this.applyDamage(car, ghost.damage, 'ghost');
+    }
+
+    createGhostHitEffect(position, car) {
+        // Purple/red spooky particles
+        const colors = [0xff00ff, 0xff0066, 0xaa00ff, 0xff3399];
+        const numParticles = 25;
+
+        for (let i = 0; i < numParticles; i++) {
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const particle = new THREE.Mesh(
+                new THREE.SphereGeometry(0.4 + Math.random() * 0.3, 6, 6),
+                new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 })
+            );
+
+            particle.position.copy(position);
+            particle.velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.6,
+                Math.random() * 0.4 + 0.1,
+                (Math.random() - 0.5) * 0.6
+            );
+            particle.life = 1;
+            particle.decay = 0.025 + Math.random() * 0.015;
+
+            this.scene.add(particle);
+            this.pickupEffects.push(particle);
+        }
+
+        // Spooky expanding ring
+        const ringGeo = new THREE.RingGeometry(0.5, 1.5, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: 0xff00ff,
+            transparent: true,
+            opacity: 0.9,
+            side: THREE.DoubleSide
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.copy(position);
+        ring.rotation.x = -Math.PI / 2;
+        ring.expandSpeed = 0.4;
+        ring.life = 1;
+        ring.decay = 0.04;
+        ring.isRing = true;
+        this.scene.add(ring);
+        this.pickupEffects.push(ring);
+
+        // Floating damage text for ALL cars
+        this.createFloatingText(car, 'HAUNTED!', 0xff00ff);
     }
 
     // Pickup items system
@@ -1630,13 +1680,16 @@ class RacingGame {
         if (pickup.collected) return;
         pickup.collected = true;
 
-        // Create collection effect
+        // Create collection effect for ALL cars
         this.createPickupCollectEffect(pickup.position.clone(), pickup.pickupType);
 
         // Apply pickup effect
         if (pickup.pickupType === 'health') {
             const healAmount = 15 + Math.floor(Math.random() * 20); // 15-35 health
             car.health = Math.min(car.health + healAmount, 100);
+
+            // Create floating text effect for ALL cars
+            this.createFloatingText(car, '+' + healAmount + ' HP', 0x00ff44);
 
             if (car.isPlayer) {
                 this.updateHealthDisplay();
@@ -1649,6 +1702,9 @@ class RacingGame {
 
             // Create shield visual on car
             this.createCarShield(car);
+
+            // Create floating text effect for ALL cars
+            this.createFloatingText(car, 'SHIELD', 0x00aaff);
 
             if (car.isPlayer) {
                 this.showPickupText('SHIELD 5s', '#00aaff');
@@ -1724,6 +1780,62 @@ class RacingGame {
         }
     }
 
+    updateInvincibilityUI() {
+        const invEl = document.getElementById('invincibility');
+        if (!invEl || !this.raceStartTime) return;
+
+        const elapsed = Date.now() - this.raceStartTime;
+        const remaining = Math.max(0, 10000 - elapsed);
+
+        if (remaining > 0) {
+            const seconds = Math.ceil(remaining / 1000);
+            invEl.textContent = `INVINCIBLE ${seconds}s`;
+            invEl.classList.add('show');
+        } else {
+            invEl.classList.remove('show');
+        }
+    }
+
+    createFloatingText(car, text, color) {
+        // Create 3D floating text above car using sprite
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+
+        // Convert hex color to CSS
+        const cssColor = '#' + color.toString(16).padStart(6, '0');
+
+        ctx.fillStyle = cssColor;
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 4;
+        ctx.font = 'bold 36px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.strokeText(text, 128, 32);
+        ctx.fillText(text, 128, 32);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMat = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true,
+            depthTest: false
+        });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.scale.set(8, 2, 1);
+        sprite.position.copy(car.position);
+        sprite.position.y += 5;
+
+        sprite.velocity = 0.08;
+        sprite.life = 1;
+        sprite.decay = 0.02;
+        sprite.isSprite = true;
+
+        this.scene.add(sprite);
+        this.pickupEffects.push(sprite);
+    }
+
     createPickupCollectEffect(position, type) {
         const color = type === 'health' ? 0x00ff44 : 0x00aaff;
         const numParticles = 20;
@@ -1770,10 +1882,18 @@ class RacingGame {
                 effect.scale.x += effect.expandSpeed;
                 effect.scale.y += effect.expandSpeed;
                 effect.material.opacity = effect.life * 0.8;
-            } else {
-                // Particle
+            } else if (effect.isSprite) {
+                // Floating text sprite
+                effect.position.y += effect.velocity;
+                effect.material.opacity = effect.life;
+            } else if (effect.velocity && effect.velocity.isVector3) {
+                // Particle with Vector3 velocity
                 effect.position.add(effect.velocity);
                 effect.velocity.y -= 0.01; // Gravity
+                effect.material.opacity = effect.life;
+                effect.scale.setScalar(effect.life);
+            } else {
+                // Regular particle
                 effect.material.opacity = effect.life;
                 effect.scale.setScalar(effect.life);
             }
@@ -3067,6 +3187,7 @@ class RacingGame {
         this.updateGhosts();
         this.updatePickups();
         this.updateCarShields();
+        this.updateInvincibilityUI();
         this.updateCamera();
         this.updatePositions();
 

@@ -3439,7 +3439,7 @@ class RacingGame {
         introOverlay.innerHTML = `
             <div style="max-width: 750px; text-align: center;">
                 <h1 style="font-size: 52px; color: #ff4400; text-shadow: 0 0 30px #ff4400, 0 0 60px #ff0000; margin-bottom: 10px; letter-spacing: 4px;">
-                    STREET RACING 3D
+                    WASTED WHEELS
                 </h1>
                 <div style="font-size: 16px; color: #ffaa00; margin-bottom: 20px; letter-spacing: 2px;">
                     ~ A TOTALLY LEGITIMATE RACING STORY ~

@@ -125,16 +125,81 @@ class RacingGame {
             if (this.audioContext) return;
 
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const ctx = this.audioContext;
 
-            // Create engine sound (continuous oscillator)
-            this.engineOscillator = this.audioContext.createOscillator();
-            this.engineGain = this.audioContext.createGain();
-            this.engineOscillator.type = 'sawtooth';
-            this.engineOscillator.frequency.value = 80;
-            this.engineGain.gain.value = 0;
-            this.engineOscillator.connect(this.engineGain);
-            this.engineGain.connect(this.audioContext.destination);
-            this.engineOscillator.start();
+            // Create realistic V8 engine sound with multiple harmonics
+            this.engineMasterGain = ctx.createGain();
+            this.engineMasterGain.gain.value = 0;
+            this.engineMasterGain.connect(ctx.destination);
+
+            // Engine compression for that punchy sound
+            this.engineCompressor = ctx.createDynamicsCompressor();
+            this.engineCompressor.threshold.value = -24;
+            this.engineCompressor.knee.value = 30;
+            this.engineCompressor.ratio.value = 12;
+            this.engineCompressor.attack.value = 0.003;
+            this.engineCompressor.release.value = 0.25;
+            this.engineCompressor.connect(this.engineMasterGain);
+
+            // Low-pass filter for engine warmth
+            this.engineFilter = ctx.createBiquadFilter();
+            this.engineFilter.type = 'lowpass';
+            this.engineFilter.frequency.value = 800;
+            this.engineFilter.Q.value = 1;
+            this.engineFilter.connect(this.engineCompressor);
+
+            // Create multiple oscillators for V8 engine harmonics
+            this.engineOscillators = [];
+            this.engineGains = [];
+
+            // Fundamental frequency (main engine rumble)
+            const harmonics = [
+                { type: 'sawtooth', freqMult: 1, gain: 0.4 },      // Fundamental
+                { type: 'square', freqMult: 0.5, gain: 0.3 },      // Sub-bass rumble
+                { type: 'sawtooth', freqMult: 2, gain: 0.2 },      // 2nd harmonic
+                { type: 'triangle', freqMult: 4, gain: 0.1 },      // 4th harmonic (exhaust crackle)
+                { type: 'sawtooth', freqMult: 0.25, gain: 0.15 }   // Deep V8 throb
+            ];
+
+            harmonics.forEach(h => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                osc.type = h.type;
+                osc.frequency.value = 40;
+                gain.gain.value = h.gain;
+
+                osc.connect(gain);
+                gain.connect(this.engineFilter);
+                osc.start();
+
+                this.engineOscillators.push({ osc, freqMult: h.freqMult });
+                this.engineGains.push(gain);
+            });
+
+            // Add engine noise (air intake / exhaust texture)
+            const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+            const noiseData = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseData.length; i++) {
+                noiseData[i] = (Math.random() * 2 - 1) * 0.5;
+            }
+
+            this.engineNoise = ctx.createBufferSource();
+            this.engineNoise.buffer = noiseBuffer;
+            this.engineNoise.loop = true;
+
+            this.engineNoiseGain = ctx.createGain();
+            this.engineNoiseGain.gain.value = 0;
+
+            this.engineNoiseFilter = ctx.createBiquadFilter();
+            this.engineNoiseFilter.type = 'bandpass';
+            this.engineNoiseFilter.frequency.value = 500;
+            this.engineNoiseFilter.Q.value = 0.5;
+
+            this.engineNoise.connect(this.engineNoiseFilter);
+            this.engineNoiseFilter.connect(this.engineNoiseGain);
+            this.engineNoiseGain.connect(this.engineCompressor);
+            this.engineNoise.start();
 
             document.removeEventListener('keydown', initAudio);
             document.removeEventListener('click', initAudio);
@@ -179,24 +244,79 @@ class RacingGame {
             this.playNoise(0.1, 0.3, volume * 0.3);
 
         } else if (type === 'hit') {
-            // Impact sound
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
+            // Realistic metal crash/impact sound
+            const masterGain = ctx.createGain();
+            masterGain.gain.value = volume;
+            masterGain.connect(ctx.destination);
 
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(150, now);
-            osc.frequency.exponentialRampToValueAtTime(50, now + 0.15);
+            // Low thud (body impact)
+            const thudOsc = ctx.createOscillator();
+            const thudGain = ctx.createGain();
+            thudOsc.type = 'sine';
+            thudOsc.frequency.setValueAtTime(80, now);
+            thudOsc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
+            thudGain.gain.setValueAtTime(0.8, now);
+            thudGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            thudOsc.connect(thudGain);
+            thudGain.connect(masterGain);
+            thudOsc.start(now);
+            thudOsc.stop(now + 0.2);
 
-            gain.gain.setValueAtTime(volume * 0.6, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            // Metal crunch (mid frequencies)
+            const crunchOsc = ctx.createOscillator();
+            const crunchGain = ctx.createGain();
+            const crunchFilter = ctx.createBiquadFilter();
+            crunchOsc.type = 'sawtooth';
+            crunchOsc.frequency.setValueAtTime(300, now);
+            crunchOsc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+            crunchFilter.type = 'bandpass';
+            crunchFilter.frequency.value = 400;
+            crunchFilter.Q.value = 2;
+            crunchGain.gain.setValueAtTime(0.5, now);
+            crunchGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            crunchOsc.connect(crunchFilter);
+            crunchFilter.connect(crunchGain);
+            crunchGain.connect(masterGain);
+            crunchOsc.start(now);
+            crunchOsc.stop(now + 0.1);
 
-            osc.connect(gain);
-            gain.connect(ctx.destination);
+            // High metallic ring
+            const ringOsc = ctx.createOscillator();
+            const ringGain = ctx.createGain();
+            const ringFilter = ctx.createBiquadFilter();
+            ringOsc.type = 'sine';
+            ringOsc.frequency.setValueAtTime(1200, now);
+            ringOsc.frequency.exponentialRampToValueAtTime(800, now + 0.3);
+            ringFilter.type = 'highpass';
+            ringFilter.frequency.value = 600;
+            ringGain.gain.setValueAtTime(0.2, now);
+            ringGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            ringOsc.connect(ringFilter);
+            ringFilter.connect(ringGain);
+            ringGain.connect(masterGain);
+            ringOsc.start(now);
+            ringOsc.stop(now + 0.3);
 
-            osc.start(now);
-            osc.stop(now + 0.15);
-
-            this.playNoise(0.05, 0.1, volume * 0.4);
+            // Glass/debris scatter noise
+            const noiseLen = 0.25;
+            const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * noiseLen, ctx.sampleRate);
+            const noiseData = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseData.length; i++) {
+                noiseData[i] = (Math.random() * 2 - 1);
+            }
+            const noiseSource = ctx.createBufferSource();
+            noiseSource.buffer = noiseBuffer;
+            const noiseGain = ctx.createGain();
+            const noiseFilter = ctx.createBiquadFilter();
+            noiseFilter.type = 'highpass';
+            noiseFilter.frequency.value = 2000;
+            noiseGain.gain.setValueAtTime(0.4, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + noiseLen);
+            noiseSource.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(masterGain);
+            noiseSource.start(now);
+            noiseSource.stop(now + noiseLen);
 
         } else if (type === 'ghost') {
             // Spooky whoosh
@@ -334,16 +454,38 @@ class RacingGame {
     }
 
     updateEngineSound() {
-        if (!this.engineOscillator || !this.engineGain || !this.audioContext) return;
+        if (!this.engineOscillators || !this.engineMasterGain || !this.audioContext) return;
 
         const speed = Math.abs(this.speed);
-        const targetFreq = 60 + speed * 2.5;
-        const targetGain = this.gameStarted && !this.gameOver ? Math.min(speed / 150, 0.15) : 0;
-
-        // Smooth transitions
         const now = this.audioContext.currentTime;
-        this.engineOscillator.frequency.setTargetAtTime(targetFreq, now, 0.1);
-        this.engineGain.gain.setTargetAtTime(targetGain, now, 0.1);
+
+        // RPM simulation (idle at 800 RPM, max at 8000 RPM)
+        const minRPM = 800;
+        const maxRPM = 8000;
+        const rpm = minRPM + (speed / 200) * (maxRPM - minRPM);
+
+        // Convert RPM to base frequency (V8 fires 4 times per revolution)
+        // At 800 RPM: 800/60 * 4 = ~53 Hz, at 8000 RPM: 8000/60 * 4 = ~533 Hz
+        const baseFreq = (rpm / 60) * 4;
+
+        // Update all harmonic oscillators
+        this.engineOscillators.forEach(({ osc, freqMult }) => {
+            const targetFreq = Math.max(20, Math.min(baseFreq * freqMult, 2000));
+            osc.frequency.setTargetAtTime(targetFreq, now, 0.05);
+        });
+
+        // Update filter cutoff based on RPM (higher RPM = brighter sound)
+        const filterFreq = 400 + (rpm / maxRPM) * 1600;
+        this.engineFilter.frequency.setTargetAtTime(filterFreq, now, 0.1);
+
+        // Update noise (more at higher RPM for exhaust/intake sound)
+        const noiseGain = (speed / 200) * 0.08;
+        this.engineNoiseGain.gain.setTargetAtTime(noiseGain, now, 0.1);
+        this.engineNoiseFilter.frequency.setTargetAtTime(300 + (rpm / maxRPM) * 1500, now, 0.1);
+
+        // Master volume based on game state
+        const targetGain = this.gameStarted && !this.gameOver ? Math.min(0.08 + speed / 300, 0.25) : 0;
+        this.engineMasterGain.gain.setTargetAtTime(targetGain, now, 0.15);
     }
 
     createSkybox() {
